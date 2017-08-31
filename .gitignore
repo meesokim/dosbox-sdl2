@@ -1,0 +1,12 @@
+*~
+.*.sw?
+*.mo
+*.orig
+*.pyc
+*.pyo
+*.rej
+*.obj
+*.bak
+.DS_Store
+
+android-project/build

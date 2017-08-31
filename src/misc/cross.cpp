@@ -23,6 +23,7 @@
 #include <string>
 #include <stdlib.h>
 
+
 #ifdef WIN32
 #ifndef _WIN32_IE
 #define _WIN32_IE 0x0400
@@ -68,6 +69,7 @@ void Cross::GetPlatformConfigDir(std::string& in) {
 #elif defined(ANDROID)
 	in = SDL_AndroidGetExternalStoragePath();
 	//Assume external storage (possibly internal) is available
+	chdir(in.c_str());
 	ResolveHomedir(in);
 #else
 	in = "~/.dosbox";
@@ -81,6 +83,8 @@ void Cross::GetPlatformConfigName(std::string& in) {
 #define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
 #elif defined(MACOSX)
 #define DEFAULT_CONFIG_FILE "DOSBox " VERSION " Preferences"
+#elif defined(ANDROID)
+#define DEFAULT_CONFIG_FILE "dosbox.conf"
 #else /*linux freebsd*/
 #define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
 #endif

@@ -24,12 +24,19 @@ allprojects {
 android {
     compileSdkVersion 21
     buildToolsVersion "25.0.1"
+	ext.gameTitle = "."
+	
+    if ( project.hasProperty("game") ) {
+        ext.gameTitle = game
+    }	
    
     defaultConfig {
-        applicationId "com.dosbox.emu"
+        applicationId "com.dosbox."+android.gameTitle
         minSdkVersion 10
         targetSdkVersion 17
-
+		if (android.gameTitle != ".") {
+			setProperty("archivesBaseName", android.gameTitle)
+		}
         ndk {
             moduleName 'main'
         }
@@ -41,14 +48,11 @@ android {
     }
 
     sourceSets.main {
-		manifest.srcFile 'AndroidManifest.xml'
+		manifest.srcFile android.gameTitle+'/AndroidManifest.xml'
 		jniLibs.srcDirs =['libs']
-		java.srcDirs = ['src']
-		resources.srcDirs = ['src']
-		aidl.srcDirs = ['src']
-		renderscript.srcDirs = ['src']
-		res.srcDirs = ['res']
-		assets.srcDirs = ['assets']
+		java.srcDirs = [android.gameTitle+'/src']
+		res.srcDirs = [android.gameTitle+'/res']
+		assets.srcDirs = [android.gameTitle+'/assets']
     }
 
     buildTypes {

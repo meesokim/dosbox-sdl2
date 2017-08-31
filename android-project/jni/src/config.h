@@ -212,7 +212,11 @@
 /* #undef TM_IN_SYS_TIME */
 
 /* Version number of package */
+#ifdef __ANDROID__
+#define VERSION "android"
+#else
 #define VERSION "SVN"
+#endif
 
 /* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
    significant byte first (like Motorola and SPARC, unlike Intel). */

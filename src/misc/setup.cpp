@@ -806,12 +806,13 @@ bool Config::ParseConfigFile(char const * const configfilename){
 	string gegevens;
 	Section* currentsection = NULL;
 	Section* testsec = NULL;
+//	int cnt = 0;
 	while (getline(in,gegevens)) {
 		
 		/* strip leading/trailing whitespace */
 		trim(gegevens);
 		if(!gegevens.size()) continue;
-
+//		LOG_MSG("CONFIG:%d. %s", ++cnt, gegevens.c_str());
 		switch(gegevens[0]){
 		case '%':
 		case '\0':

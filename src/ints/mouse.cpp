@@ -19,7 +19,9 @@
 
 #include <string.h>
 #include <math.h>
-
+#ifdef ANDROID
+#include <android/log.h>
+#endif
 
 #include "dosbox.h"
 #include "callback.h"
@@ -494,6 +496,9 @@ void Mouse_CursorMoved(float xrel,float yrel,float x,float y,bool emulate) {
 		if (mouse.y >= 32768.0) mouse.y -= 65536.0;
 		else if (mouse.y <= -32769.0) mouse.y += 65536.0;
 	}
+#ifdef ANDROID
+	__android_log_print(ANDROID_LOG_DEBUG, "MOUSE", "mouse.x=%f,mouse.y=%f,x=%f,y=%f", mouse.x, mouse.y,x,y);
+#endif 
 	Mouse_AddEvent(MOUSE_HAS_MOVED);
 	DrawCursor();
 }

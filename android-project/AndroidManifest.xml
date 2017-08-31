@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Replace org.libsdl.app with the identifier of your game below, e.g.
-     com.gamemaker.game (Done: com.dosbox.emu)
+     com.gamemaker.game (Done: com.dosbox.indy3)
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
       package="com.dosbox.emu"
@@ -20,7 +20,14 @@
     <application android:label="@string/app_name"
                  android:icon="@drawable/icon"
 	         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+		<meta-data
+            android:name="com.samsung.android.sdk.multiwindow.dex.launchwidth"
+            android:value="0" />
+        <meta-data
+            android:name="com.samsung.android.sdk.multiwindow.dex.launchheight"
+            android:value="0" />				 
         <activity android:name="DOSBoxActivity"
+				  android:screenOrientation="landscape"
                   android:configChanges="orientation|screenSize"
                   android:label="@string/app_name">
             <intent-filter>

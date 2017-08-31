@@ -1957,7 +1957,7 @@ static void GUI_StartUp(Section * sec) {
 
 /* Please leave the Splash screen stuff in working order in DOSBox. We spend a lot of time making DOSBox. */
 	SDL_Surface* splash_surf = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, rmask, gmask, bmask, 0);
-	if (splash_surf) {
+	if (0) {
 #if SDL_VERSION_ATLEAST(2,0,0)
 		SDL_SetSurfaceBlendMode(splash_surf, SDL_BLENDMODE_BLEND);
 #endif
@@ -2150,7 +2150,14 @@ static void HandleTouchFinger(SDL_TouchFingerEvent * tfinger) {
 	}
 }
 
-#else	// Not on Android
+static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
+//	if (sdl.mouse.locked || !sdl.mouse.autoenable)
+		Mouse_CursorMoved((float)motion->xrel*sdl.mouse.sensitivity/100.0f,
+						  (float)motion->yrel*sdl.mouse.sensitivity/100.0f,
+						  (float)(motion->x-sdl.clip.x)/(sdl.clip.w-1)*sdl.mouse.sensitivity/100.0f,
+						  (float)(motion->y-sdl.clip.y)/(sdl.clip.h-1)*sdl.mouse.sensitivity/100.0f, 0);
+}
+#else						  
 static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
 	if (sdl.mouse.locked || !sdl.mouse.autoenable)
 		Mouse_CursorMoved((float)motion->xrel*sdl.mouse.sensitivity/100.0f,
@@ -2159,6 +2166,8 @@ static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
 						  (float)(motion->y-sdl.clip.y)/(sdl.clip.h-1)*sdl.mouse.sensitivity/100.0f,
 						  sdl.mouse.locked);
 }
+#endif	// End of touch/mouse differentiation
+
 
 static void HandleMouseButton(SDL_MouseButtonEvent * button) {
 	switch (button->state) {
@@ -2199,7 +2208,6 @@ static void HandleMouseButton(SDL_MouseButtonEvent * button) {
 		break;
 	}
 }
-#endif	// End of touch/mouse differentiation
 
 void GFX_LosingFocus(void) {
 	sdl.laltstate=SDL_KEYUP;
@@ -2421,7 +2429,7 @@ void GFX_Events() {
 		case SDL_FINGERMOTION:
 			HandleTouchFinger(&event.tfinger);
 			break;
-#else
+#endif
 		case SDL_MOUSEMOTION:
 			HandleMouseMotion(&event.motion);
 			break;
@@ -2429,7 +2437,6 @@ void GFX_Events() {
 		case SDL_MOUSEBUTTONUP:
 			HandleMouseButton(&event.button);
 			break;
-#endif
 #if !SDL_VERSION_ATLEAST(2,0,0)
 		case SDL_VIDEORESIZE:
 			//GFX_HandleVideoResize(event.resize.w, event.resize.h);
