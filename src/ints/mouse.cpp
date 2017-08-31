@@ -469,7 +469,8 @@ void Mouse_CursorMoved(float xrel,float yrel,float x,float y,bool emulate) {
 		if (CurMode->type == M_TEXT) {
 			mouse.x = x*CurMode->swidth;
 			mouse.y = y*CurMode->sheight * 8 / CurMode->cheight;
-		} else if ((mouse.max_x < 2048) || (mouse.max_y < 2048) || (mouse.max_x != mouse.max_y)) {
+		} 
+		else if ((mouse.max_x < 2048) || (mouse.max_y < 2048) || (mouse.max_x != mouse.max_y)) {
 			if ((mouse.max_x > 0) && (mouse.max_y > 0)) {
 				mouse.x = x*mouse.max_x;
 				mouse.y = y*mouse.max_y;
@@ -482,7 +483,13 @@ void Mouse_CursorMoved(float xrel,float yrel,float x,float y,bool emulate) {
 			mouse.y += yrel;
 		}
 	}
-
+#if defined(ANDROID)
+	if (!emulate) {
+		mouse.x = x;
+		mouse.y = y;
+	}
+	__android_log_print(ANDROID_LOG_DEBUG, "MOUSE", "mouse.x=%f,mouse.y=%f,x=%f,y=%f,xrel=%f,yrel=%f,emulate=%s", mouse.x, mouse.y,x,y,xrel,yrel, emulate ? "Y" : "N");
+#endif 
 	/* ignore constraints if using PS2 mouse callback in the bios */
 
 	if (!useps2callback) {		
@@ -496,9 +503,7 @@ void Mouse_CursorMoved(float xrel,float yrel,float x,float y,bool emulate) {
 		if (mouse.y >= 32768.0) mouse.y -= 65536.0;
 		else if (mouse.y <= -32769.0) mouse.y += 65536.0;
 	}
-#ifdef ANDROID
-	__android_log_print(ANDROID_LOG_DEBUG, "MOUSE", "mouse.x=%f,mouse.y=%f,x=%f,y=%f", mouse.x, mouse.y,x,y);
-#endif 
+
 	Mouse_AddEvent(MOUSE_HAS_MOVED);
 	DrawCursor();
 }

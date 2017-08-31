@@ -621,7 +621,7 @@ static SDL_Window * GFX_SetupWindowScaled(SCREEN_TYPES screenType) {
 		double ratio_w=(double)fixedWidth/(sdl.draw.width*sdl.draw.scalex);
 		double ratio_h=(double)fixedHeight/(sdl.draw.height*sdl.draw.scaley);
 		if ( ratio_w < ratio_h) {
-			sdl.clip.w=fixedWidth;
+			sdl.clip.w=(Bit16u)fixedWidth;
 			sdl.clip.h=(Bit16u)(sdl.draw.height*sdl.draw.scaley*ratio_w);
 		} else {
 			sdl.clip.w=(Bit16u)(sdl.draw.width*sdl.draw.scalex*ratio_h);
@@ -2144,7 +2144,7 @@ static void HandleTouchFinger(SDL_TouchFingerEvent * tfinger) {
 			if (sdl.mouse.mouseMotionFingerID == tfinger->fingerId) {
 				Mouse_CursorMoved((float)tfinger->dx*sdl.clip.w*sdl.mouse.sensitivity/100.0f,
 				                  (float)tfinger->dy*sdl.clip.h*sdl.mouse.sensitivity/100.0f,
-				                  0, 0, true);
+				                  tfinger->x * sdl.desktop.full.width, tfinger->y * sdl.desktop.full.height, true);
 			}
 			break;
 	}
@@ -2152,10 +2152,11 @@ static void HandleTouchFinger(SDL_TouchFingerEvent * tfinger) {
 
 static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
 //	if (sdl.mouse.locked || !sdl.mouse.autoenable)
-		Mouse_CursorMoved((float)motion->xrel*sdl.mouse.sensitivity/100.0f,
-						  (float)motion->yrel*sdl.mouse.sensitivity/100.0f,
-						  (float)(motion->x-sdl.clip.x)/(sdl.clip.w-1)*sdl.mouse.sensitivity/100.0f,
-						  (float)(motion->y-sdl.clip.y)/(sdl.clip.h-1)*sdl.mouse.sensitivity/100.0f, 0);
+		Mouse_CursorMoved((float)0,
+						  (float)0,
+						  (float)(motion->x-sdl.clip.x)/(sdl.desktop.full.width-sdl.clip.x*2)*(sdl.clip.w-1),
+						  (float)(motion->y-sdl.clip.y)/(sdl.desktop.full.height-sdl.clip.y*2)*(sdl.clip.h-1), 0);
+	__android_log_print(ANDROID_LOG_DEBUG, "MOUSE", "motion.x=%f,,motion.y=%f,clip.x=%d,clip.y=%d,clip.w=%d,clip.h=%d,fx=%d,fy=%d", motion->x, motion->y, sdl.clip.x, sdl.clip.y, sdl.draw.width, sdl.draw.height, sdl.desktop.full.width, sdl.desktop.full.height);
 }
 #else						  
 static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
@@ -2172,6 +2173,7 @@ static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
 static void HandleMouseButton(SDL_MouseButtonEvent * button) {
 	switch (button->state) {
 	case SDL_PRESSED:
+#ifndef ANDROID	
 		if (sdl.mouse.requestlock && !sdl.mouse.locked) {
 			GFX_CaptureMouse();
 			// Dont pass klick to mouse handler
@@ -2181,6 +2183,10 @@ static void HandleMouseButton(SDL_MouseButtonEvent * button) {
 			GFX_CaptureMouse();
 			break;
 		}
+#else		
+		GFX_CaptureMouse();
+#endif
+		
 		switch (button->button) {
 		case SDL_BUTTON_LEFT:
 			Mouse_ButtonPressed(0);

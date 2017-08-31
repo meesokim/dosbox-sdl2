@@ -176,7 +176,7 @@ public class SDLActivity extends Activity {
         else {
             mJoystickHandler = new SDLJoystickHandler();
         }
-
+	
         mLayout = new RelativeLayout(this);
         mLayout.addView(mSurface);
 
@@ -1325,19 +1325,15 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         float x,y,p;
 		
         // !!! FIXME: dump this SDK check after 2.0.4 ships and require API14.
-        if (event.getSource() == InputDevice.SOURCE_MOUSE) {
-			if (SDLActivity.mSeparateMouseAndTouch) {
-	            if (Build.VERSION.SDK_INT > 13) {
-	                try {
-	                    mouseButton = (Integer) event.getClass().getMethod("getButtonState").invoke(event);
-	                } catch(Exception e) {
-	                    mouseButton = 1;    // oh well.
-	                }
-	            }
-	            SDLActivity.onNativeMouse(mouseButton, action, event.getX(pointerFingerId), event.getY(pointerFingerId));
-			} else {
-	            SDLActivity.onNativeMouse(mouseButton, action, event.getX(pointerFingerId), event.getY(pointerFingerId));
-			} 
+        if (event.getSource() == InputDevice.SOURCE_MOUSE) {// && SDLActivity.mSeparateMouseAndTouch) {
+			if (Build.VERSION.SDK_INT > 13) {
+				try {
+					mouseButton = (Integer) event.getClass().getMethod("getButtonState").invoke(event);
+				} catch(Exception e) {
+					mouseButton = 1;    // oh well.
+				}
+			}
+			SDLActivity.onNativeMouse(mouseButton, action, event.getX(pointerFingerId), event.getY(pointerFingerId));
         } else {
             switch(action) {
                 case MotionEvent.ACTION_MOVE:
