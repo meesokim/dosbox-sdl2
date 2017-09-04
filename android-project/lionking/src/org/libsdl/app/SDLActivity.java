@@ -1284,12 +1284,12 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
         if ((event.getSource() & InputDevice.SOURCE_KEYBOARD) != 0) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                //Log.v("SDL", "key down: " + keyCode);
+                Log.v("SDL", "key down: " + keyCode);
                 SDLActivity.onNativeKeyDown(keyCode);
                 return true;
             }
             else if (event.getAction() == KeyEvent.ACTION_UP) {
-                //Log.v("SDL", "key up: " + keyCode);
+                Log.v("SDL", "key up: " + keyCode);
                 SDLActivity.onNativeKeyUp(keyCode);
                 return true;
             }
@@ -1467,12 +1467,14 @@ class DummyEdit extends View implements View.OnKeyListener {
     public boolean onKey(View v, int keyCode, KeyEvent event) {
 
         // This handles the hardware keyboard input
+		/*
         if (event.isPrintingKey() || keyCode == KeyEvent.KEYCODE_SPACE) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 ic.commitText(String.valueOf((char) event.getUnicodeChar()), 1);
             }
             return true;
         }
+		*/
 
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             SDLActivity.onNativeKeyDown(keyCode);

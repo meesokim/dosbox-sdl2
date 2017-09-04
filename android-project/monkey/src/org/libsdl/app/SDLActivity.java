@@ -32,6 +32,7 @@ import android.content.pm.ActivityInfo;
 import java.io.*;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
+import android.view.PointerIcon;
 
 /**
     SDL Activity
@@ -1443,6 +1444,10 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
                                       event.values[2] / SensorManager.GRAVITY_EARTH);
         }
     }
+	@Override
+    public PointerIcon onResolvePointerIcon(MotionEvent event, int pointerIndex) {
+        return PointerIcon.getSystemIcon(getContext(), PointerIcon.TYPE_NULL);
+    }	
 }
 
 /* This is a fake invisible editor view that receives the input and defines the
