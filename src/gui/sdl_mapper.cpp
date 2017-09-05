@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -36,20 +36,16 @@
 #include "support.h"
 #include "mapper.h"
 #include "setup.h"
+#include "pic.h"
 
 enum {
 	CLR_BLACK=0,
-	CLR_WHITE=1,
-	CLR_RED=2,
-	CLR_BLUE=3,
-	CLR_GREEN=4
-#if 0
-	CLR_BLACK=0xff000000,
-	CLR_WHITE=0xffffffff,
-	CLR_RED=0xff0000ff,
-	CLR_BLUE=0xffff0000,
-	CLR_GREEN=0xff00ff00
-#endif
+	CLR_GREY=1,
+	CLR_WHITE=2,
+	CLR_RED=3,
+	CLR_BLUE=4,
+	CLR_GREEN=5,
+	CLR_LAST
 };
 
 enum BB_Types {
@@ -72,7 +68,9 @@ enum BC_Types {
 
 #define MAXSTICKS 8
 #define MAXACTIVE 16
-#define MAXBUTTON 32
+// Use 36 for Android (KEYCODE_BUTTON_1..16 are mapped to SDL buttons 20..35)
+#define MAXBUTTON 36
+//#define MAXBUTTON 32
 #define MAXBUTTON_CAP 16
 
 class CEvent;
@@ -371,7 +369,7 @@ typedef char assert_right_size [MAX_SCANCODES == (sizeof(sdlkey_map)/sizeof(sdlk
 
 #else // !MACOSX
 
-#define MAX_SCANCODES 212
+#define MAX_SCANCODES 0xdf
 static SDLKey sdlkey_map[MAX_SCANCODES]={SDLK_UNKNOWN,SDLK_ESCAPE,
 	SDLK_1,SDLK_2,SDLK_3,SDLK_4,SDLK_5,SDLK_6,SDLK_7,SDLK_8,SDLK_9,SDLK_0,
 	/* 0x0c: */
@@ -390,13 +388,28 @@ static SDLKey sdlkey_map[MAX_SCANCODES]={SDLK_UNKNOWN,SDLK_ESCAPE,
 	SDLK_KP7,SDLK_KP8,SDLK_KP9,SDLK_KP_MINUS,SDLK_KP4,SDLK_KP5,SDLK_KP6,SDLK_KP_PLUS,
 	SDLK_KP1,SDLK_KP2,SDLK_KP3,SDLK_KP0,SDLK_KP_PERIOD,
 	SDLK_UNKNOWN,SDLK_UNKNOWN,
-	SDLK_LESS,SDLK_F11,SDLK_F12,
-	Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,
-	Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,
-	Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,
-	/* 0xb7: */
-	Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z,Z
-	/* 0xd4: ... */
+	SDLK_LESS,SDLK_F11,SDLK_F12, Z, Z, Z, Z, Z, Z, Z,
+	/* 0x60: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0x70: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0x80: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0x90: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0xA0: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0xB0: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0xC0: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0xD0: */
+	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z//,Z,Z,
+	/* 0xE0: */
+	//Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z,
+	/* 0xF0: */
+//	Z,Z,Z,Z, Z,Z,Z,Z, Z,Z,Z,Z, Z,Z//,Z,Z
+
 };
 #endif
 
@@ -565,11 +578,12 @@ protected:
 };
 
 #define MAX_VJOY_BUTTONS 8
-
+#define MAX_VJOY_HAT 16
+#define MAX_VJOY_AXIS 8
 static struct {
 	bool button_pressed[MAX_VJOY_BUTTONS];
-	Bit16s axis_pos[8];
-	bool hat_pressed[16];
+	Bit16s axis_pos[MAX_VJOY_AXIS];
+	bool hat_pressed[MAX_VJOY_HAT];
 } virtual_joysticks[2];
 
 
@@ -1280,6 +1294,8 @@ protected:
 static struct CMapper {
 #if SDL_VERSION_ATLEAST(2,0,0)
 	SDL_Window * window;
+	SDL_Rect draw_rect;
+	SDL_Surface * draw_surface_nonpaletted; // Needed for SDL_BlitScaled
 #endif
 	SDL_Surface * surface;
 	SDL_Surface * draw_surface;
@@ -1319,7 +1335,7 @@ void CBindGroup::DeactivateBindList(CBindList * list,bool ev_trigger) {
 }
 
 static void DrawText(Bitu x,Bitu y,const char * text,Bit8u color) {
-	Bit8u * draw=((Bit8u *)mapper.draw_surface->pixels)+(y*mapper.draw_surface->w)+x;
+	Bit8u * draw=((Bit8u *)mapper.surface->pixels)+(y*mapper.surface->pitch)+x;
 	while (*text) {
 		Bit8u * font=&int10_font_14[(*text)*14];
 		Bitu i,j;Bit8u * draw_line=draw;
@@ -1330,7 +1346,7 @@ static void DrawText(Bitu x,Bitu y,const char * text,Bit8u color) {
 				else *(draw_line+j)=CLR_BLACK;
 				map<<=1;
 			}
-			draw_line+=mapper.draw_surface->w;
+			draw_line+=mapper.surface->pitch;
 		}
 		text++;draw+=8;
 	}
@@ -1347,19 +1363,20 @@ public:
 	}
 	virtual void Draw(void) {
 		if (!enabled) return;
-		Bit8u * point=((Bit8u *)mapper.draw_surface->pixels)+(y*mapper.draw_surface->w)+x;
+		Bit8u * point=((Bit8u *)mapper.surface->pixels)+(y*mapper.surface->pitch)+x;
 		for (Bitu lines=0;lines<dy;lines++)  {
 			if (lines==0 || lines==(dy-1)) {
 				for (Bitu cols=0;cols<dx;cols++) *(point+cols)=color;
 			} else {
 				*point=color;*(point+dx-1)=color;
 			}
-			point+=mapper.draw_surface->w;
+			point+=mapper.surface->pitch;
 		}
 	}
 	virtual bool OnTop(Bitu _x,Bitu _y) {
 		return ( enabled && (_x>=x) && (_x<x+dx) && (_y>=y) && (_y<y+dy));
 	}
+	virtual void BindColor(void) {}
 	virtual void Click(void) {}
 	void Enable(bool yes) { 
 		enabled=yes; 
@@ -1384,17 +1401,28 @@ protected:
 	const char * text;
 };
 
+class CClickableTextButton : public CTextButton {
+public:
+	CClickableTextButton(Bitu _x,Bitu _y,Bitu _dx,Bitu _dy,const char * _text) : CTextButton(_x,_y,_dx,_dy,_text) {}
+	void BindColor(void) {
+		this->SetColor(CLR_WHITE);
+	}
+};
+
 class CEventButton;
 static CEventButton * last_clicked = NULL;
 
-class CEventButton : public CTextButton {
+class CEventButton : public CClickableTextButton {
 public:
 	CEventButton(Bitu _x,Bitu _y,Bitu _dx,Bitu _dy,const char * _text,CEvent * _event) 
-	: CTextButton(_x,_y,_dx,_dy,_text) 	{ 
+	: CClickableTextButton(_x,_y,_dx,_dy,_text) 	{ 
 		event=_event;	
 	}
+	void BindColor(void) {
+		this->SetColor(event->bindlist.begin()==event->bindlist.end() ? CLR_GREY : CLR_WHITE);
+	}
 	void Click(void) {
-		if (last_clicked) last_clicked->SetColor(CLR_WHITE);
+		if (last_clicked) last_clicked->BindColor();
 		this->SetColor(CLR_GREEN);
 		SetActiveEvent(event);
 		last_clicked=this;
@@ -1429,10 +1457,10 @@ void CCaptionButton::Change(const char * format,...) {
 static void change_action_text(const char* text,Bit8u col);
 
 static void MAPPER_SaveBinds(void);
-class CBindButton : public CTextButton {
+class CBindButton : public CClickableTextButton {
 public:	
 	CBindButton(Bitu _x,Bitu _y,Bitu _dx,Bitu _dy,const char * _text,BB_Types _type) 
-	: CTextButton(_x,_y,_dx,_dy,_text) 	{ 
+	: CClickableTextButton(_x,_y,_dx,_dy,_text) 	{ 
 		type=_type;
 	}
 	void Click(void) {
@@ -1471,10 +1499,10 @@ protected:
 	BB_Types type;
 };
 
-class CCheckButton : public CTextButton {
+class CCheckButton : public CClickableTextButton {
 public:	
 	CCheckButton(Bitu _x,Bitu _y,Bitu _dx,Bitu _dy,const char * _text,BC_Types _type) 
-	: CTextButton(_x,_y,_dx,_dy,_text) 	{ 
+	: CClickableTextButton(_x,_y,_dx,_dy,_text) 	{ 
 		type=_type;
 	}
 	void Draw(void) {
@@ -1498,13 +1526,10 @@ public:
 			Bit8u * point=((Bit8u *)mapper.draw_surface->pixels)+((y+2)*mapper.draw_surface->w)+x+dx-dy+2;
 			for (Bitu lines=0;lines<(dy-4);lines++)  {
 				memset(point,color,dy-4);
-#if 0
-				for (Bitu cols=0;cols<(dy-4);cols++) *(point+cols)=color;
-#endif
 				point+=mapper.draw_surface->w;
 			}
 		}
-		CTextButton::Draw();
+		CClickableTextButton::Draw();
 	}
 	void Click(void) {
 		switch (type) {
@@ -1763,6 +1788,8 @@ static void SetActiveEvent(CEvent * event) {
 static Uint8 *sdl2_window_pal_ptr;
 #endif
 extern SDL_Window * GFX_SetSDLSurfaceWindow(Bit16u width, Bit16u height);
+extern SDL_Rect GFX_GetSDLSurfaceSubwindowDims(Bit16u width, Bit16u height);
+extern void GFX_UpdateDisplayDimensions(int width, int height);
 #endif
 
 static void DrawButtons(void) {
@@ -1770,22 +1797,14 @@ static void DrawButtons(void) {
 	for (CButton_it but_it = buttons.begin();but_it!=buttons.end();but_it++) {
 		(*but_it)->Draw();
 	}
-	SDL_BlitSurface(mapper.draw_surface, NULL, mapper.surface, NULL);
 #if SDL_VERSION_ATLEAST(2,0,0)
-#if 0
-	// Unfortunately we can't just use SDL_BlitSurface in that case
-	Uint8 bytesPerPixel = mapper.surface->format->BytesPerPixel;
-	Uint8 *currDestPixel = (Uint8 *)mapper.surface->pixels;
-	Uint8 *currSrcPixel = (Uint8 *)mapper.draw_surface->pixels;
-	for (int loopVar = 0; loopVar < mapper.surface->w * mapper.surface->h; loopVar++) {
-		memcpy(currDestPixel, sdl2_window_pal_ptr + mapper.surface->format->BytesPerPixel*(*currSrcPixel),
-		       mapper.surface->format->BytesPerPixel);
-		currSrcPixel++;
-		currDestPixel += mapper.surface->format->BytesPerPixel;
-	}
-#endif
+	// We can't just use SDL_BlitScaled (say for Android) in one step
+	SDL_BlitSurface(mapper.draw_surface, NULL, mapper.draw_surface_nonpaletted, NULL);
+	SDL_BlitScaled(mapper.draw_surface_nonpaletted, NULL, mapper.surface, &mapper.draw_rect);
+	//SDL_BlitSurface(mapper.draw_surface, NULL, mapper.surface, NULL);
 	SDL_UpdateWindowSurface(mapper.window);
 #else
+	SDL_BlitSurface(mapper.draw_surface, NULL, mapper.surface, NULL);
 	SDL_Flip(mapper.surface);
 #endif
 }
@@ -1859,27 +1878,27 @@ static KeyBlock combo_1[14]={
 };
 
 static KeyBlock combo_2[12]={
-	{"q","q",KBD_q},			{"w","w",KBD_w},	{"e","e",KBD_e},
-	{"r","r",KBD_r},			{"t","t",KBD_t},	{"y","y",KBD_y},
-	{"u","u",KBD_u},			{"i","i",KBD_i},	{"o","o",KBD_o},	
-	{"p","p",KBD_p},			{"[","lbracket",KBD_leftbracket},	
-	{"]","rbracket",KBD_rightbracket},	
+	{"Q","q",KBD_q},			{"W","w",KBD_w},	{"E","e",KBD_e},
+	{"R","r",KBD_r},			{"T","t",KBD_t},	{"Y","y",KBD_y},
+	{"U","u",KBD_u},			{"I","i",KBD_i},	{"O","o",KBD_o},
+	{"P","p",KBD_p},			{"[{","lbracket",KBD_leftbracket},
+	{"]}","rbracket",KBD_rightbracket},	
 };
 
 static KeyBlock combo_3[12]={
-	{"a","a",KBD_a},			{"s","s",KBD_s},	{"d","d",KBD_d},
-	{"f","f",KBD_f},			{"g","g",KBD_g},	{"h","h",KBD_h},
-	{"j","j",KBD_j},			{"k","k",KBD_k},	{"l","l",KBD_l},
-	{";","semicolon",KBD_semicolon},				{"'","quote",KBD_quote},
-	{"\\","backslash",KBD_backslash},	
+	{"A","a",KBD_a},			{"S","s",KBD_s},	{"D","d",KBD_d},
+	{"F","f",KBD_f},			{"G","g",KBD_g},	{"H","h",KBD_h},
+	{"J","j",KBD_j},			{"K","k",KBD_k},	{"L","l",KBD_l},
+	{";:","semicolon",KBD_semicolon},				{"'\"","quote",KBD_quote},
+	{"\\|","backslash",KBD_backslash},
 };
 
 static KeyBlock combo_4[11]={
-	{"<","lessthan",KBD_extra_lt_gt},
-	{"z","z",KBD_z},			{"x","x",KBD_x},	{"c","c",KBD_c},
-	{"v","v",KBD_v},			{"b","b",KBD_b},	{"n","n",KBD_n},
-	{"m","m",KBD_m},			{",","comma",KBD_comma},
-	{".","period",KBD_period},						{"/","slash",KBD_slash},		
+	{"<>","lessthan",KBD_extra_lt_gt},
+	{"Z","z",KBD_z},			{"X","x",KBD_x},	{"C","c",KBD_c},
+	{"V","v",KBD_v},			{"B","b",KBD_b},	{"N","n",KBD_n},
+	{"M","m",KBD_m},			{",<","comma",KBD_comma},
+	{".>","period",KBD_period},						{"/?","slash",KBD_slash},
 };
 
 static CKeyEvent * caps_lock_event=NULL;
@@ -2024,14 +2043,17 @@ static void CreateLayout(void) {
 	AddJHatButton(PX(XO+8+2),PY(YO+1),BW,BH,"RGT",0,0,1);
 
 	/* Labels for the joystick */
+	CTextButton * btn;
 	if (joytype ==JOY_2AXIS) {
 		new CTextButton(PX(XO+0),PY(YO-1),3*BW,20,"Joystick 1");
 		new CTextButton(PX(XO+4),PY(YO-1),3*BW,20,"Joystick 2");
-		new CTextButton(PX(XO+8),PY(YO-1),3*BW,20,"Disabled");
+		btn=new CTextButton(PX(XO+8),PY(YO-1),3*BW,20,"Disabled");
+		btn->SetColor(CLR_GREY);
 	} else if(joytype ==JOY_4AXIS || joytype == JOY_4AXIS_2) {
 		new CTextButton(PX(XO+0),PY(YO-1),3*BW,20,"Axis 1/2");
 		new CTextButton(PX(XO+4),PY(YO-1),3*BW,20,"Axis 3/4");
-		new CTextButton(PX(XO+8),PY(YO-1),3*BW,20,"Disabled");
+		btn=new CTextButton(PX(XO+8),PY(YO-1),3*BW,20,"Disabled");
+		btn->SetColor(CLR_GREY);
 	} else if(joytype == JOY_CH) {
 		new CTextButton(PX(XO+0),PY(YO-1),3*BW,20,"Axis 1/2");
 		new CTextButton(PX(XO+4),PY(YO-1),3*BW,20,"Axis 3/4");
@@ -2041,9 +2063,12 @@ static void CreateLayout(void) {
 		new CTextButton(PX(XO+4),PY(YO-1),3*BW,20,"Axis 3");
 		new CTextButton(PX(XO+8),PY(YO-1),3*BW,20,"Hat/D-pad");
 	} else if(joytype == JOY_NONE) {
-		new CTextButton(PX(XO+0),PY(YO-1),3*BW,20,"Disabled");
-		new CTextButton(PX(XO+4),PY(YO-1),3*BW,20,"Disabled");
-		new CTextButton(PX(XO+8),PY(YO-1),3*BW,20,"Disabled");
+		btn=new CTextButton(PX(XO+0),PY(YO-1),3*BW,20,"Disabled");
+		btn->SetColor(CLR_GREY);
+		btn=new CTextButton(PX(XO+4),PY(YO-1),3*BW,20,"Disabled");
+		btn->SetColor(CLR_GREY);
+		btn=new CTextButton(PX(XO+8),PY(YO-1),3*BW,20,"Disabled");
+		btn->SetColor(CLR_GREY);
 	}
    
    
@@ -2065,7 +2090,7 @@ static void CreateLayout(void) {
 //	new CTextButton(PX(6),0,124,20,"Keyboard Layout");
 //	new CTextButton(PX(17),0,124,20,"Joystick Layout");
 
-	bind_but.action=new CCaptionButton(180,330,0,0);
+	bind_but.action=new CCaptionButton(180,350,0,0);
 
 	bind_but.event_title=new CCaptionButton(0,350,0,0);
 	bind_but.bind_title=new CCaptionButton(0,365,0,0);
@@ -2088,12 +2113,13 @@ static void CreateLayout(void) {
 	bind_but.bind_title->Change("Bind Title");
 }
 
-static SDL_Color map_pal[5]={
+static SDL_Color map_pal[CLR_LAST]={
 	{0x00,0x00,0x00,0x00},			//0=black
-	{0xff,0xff,0xff,0x00},			//1=white
-	{0xff,0x00,0x00,0x00},			//2=red
-	{0x10,0x30,0xff,0x00},			//3=blue
-	{0x00,0xff,0x20,0x00}			//4=green
+	{0x7f,0x7f,0x7f,0x00},			//1=grey
+	{0xff,0xff,0xff,0x00},			//2=white
+	{0xff,0x00,0x00,0x00},			//3=red
+	{0x10,0x30,0xff,0x00},			//4=blue
+	{0x00,0xff,0x20,0x00}			//5=green
 };
 
 static void CreateStringBind(char * line) {
@@ -2327,7 +2353,7 @@ void MAPPER_CheckEvent(SDL_Event * event) {
 void BIND_MappingEvents(void) {
 	SDL_Event event;
 	static bool isButtonPressed = false;
-	static CButton *lastHoveredButton = NULL;
+	static CButton *lastHoveredButton = NULL; 
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
 		case SDL_MOUSEBUTTONDOWN:
@@ -2336,21 +2362,31 @@ void BIND_MappingEvents(void) {
 		case SDL_MOUSEMOTION:
 			if (!isButtonPressed)
 				break;
-			/* Maybe we have been pointing at
-			a specific for a little while  */
+#if SDL_VERSION_ATLEAST(2,0,0)
+			/* Normalize position in case a scaled sub-window is used (say on Android) */
+			event.button.x=(event.button.x-mapper.draw_rect.x)*mapper.draw_surface->w/mapper.draw_rect.w;
+			if ((event.button.x<0) || (event.button.x>=mapper.draw_surface->w))
+				break;
+			event.button.y=(event.button.y-mapper.draw_rect.y)*mapper.draw_surface->h/mapper.draw_rect.h;
+			if ((event.button.y<0) || (event.button.y>=mapper.draw_surface->h))
+				break;
+#endif
+			/* Maybe we have been pointing at a specific button for a little while  */
 			if (lastHoveredButton) {
+				/* Check if there's any change */
 				if (lastHoveredButton->OnTop(event.button.x,event.button.y))
-					break; /* No change for now */
+					break;
+				/* Not pointing at given button anymore */
 				if (lastHoveredButton == last_clicked)
-					lastHoveredButton->SetColor(CLR_GREEN);
+					lastHoveredButton->Click();
 				else
-					lastHoveredButton->SetColor(CLR_WHITE);
+					lastHoveredButton->BindColor();
 				mapper.redraw=true;
 				lastHoveredButton=NULL;
 			}
 			/* Check which button are we currently pointing at */
 			for (CButton_it but_it = buttons.begin();but_it!=buttons.end();but_it++) {
-				if ((*but_it)->OnTop(event.button.x,event.button.y)) {
+				if (dynamic_cast<CClickableTextButton *>(*but_it) && (*but_it)->OnTop(event.button.x,event.button.y)) {
 					(*but_it)->SetColor(CLR_RED);
 					mapper.redraw=true;
 					lastHoveredButton=*but_it;
@@ -2361,15 +2397,23 @@ void BIND_MappingEvents(void) {
 		case SDL_MOUSEBUTTONUP:
 			isButtonPressed = false;
 			if (lastHoveredButton) {
-				/* For most buttons the actual new color is
-				going to be green; But not for a few others. */
-				lastHoveredButton->SetColor(CLR_WHITE);
+				/* For most buttons the actual new color is going to be green; But not for a few others. */
+				lastHoveredButton->BindColor();
 				mapper.redraw=true;
 				lastHoveredButton = NULL;
 			}
+#if SDL_VERSION_ATLEAST(2,0,0)
+			/* Normalize position in case a scaled sub-window is used (say on Android) */
+			event.button.x=(event.button.x-mapper.draw_rect.x)*mapper.draw_surface->w/mapper.draw_rect.w;
+			if ((event.button.x<0) || (event.button.x>=mapper.draw_surface->w))
+				break;
+			event.button.y=(event.button.y-mapper.draw_rect.y)*mapper.draw_surface->h/mapper.draw_rect.h;
+			if ((event.button.y<0) || (event.button.y>=mapper.draw_surface->h))
+				break;
+#endif
 			/* Check the press */
 			for (CButton_it but_it = buttons.begin();but_it!=buttons.end();but_it++) {
-				if ((*but_it)->OnTop(event.button.x,event.button.y)) {
+				if (dynamic_cast<CClickableTextButton *>(*but_it) && (*but_it)->OnTop(event.button.x,event.button.y)) {
 					(*but_it)->Click();
 					break;
 				}
@@ -2384,6 +2428,8 @@ void BIND_MappingEvents(void) {
 			if ((event.window.event == SDL_WINDOWEVENT_RESIZED)
 			    || (event.window.event == SDL_WINDOWEVENT_RESTORED)) {
 				mapper.surface = SDL_GetWindowSurface(mapper.window);
+				GFX_UpdateDisplayDimensions(event.window.data1, event.window.data2);
+				mapper.draw_rect=GFX_GetSDLSurfaceSubwindowDims(640,480);
 				DrawButtons();
 			}
 			break;
@@ -2527,13 +2573,19 @@ void MAPPER_LosingFocus(void) {
 	}
 }
 
-void MAPPER_Run(bool pressed) {
-	if (pressed)
-		return;
+void MAPPER_RunEvent(Bitu /*val*/) {
 	KEYBOARD_ClrBuffer();	//Clear buffer
 	GFX_LosingFocus();		//Release any keys pressed (buffer gets filled again).
 	MAPPER_RunInternal();
 }
+
+void MAPPER_Run(bool pressed) {
+	if (pressed)
+		return;
+	PIC_AddEvent(MAPPER_RunEvent,0);	//In case mapper deletes the key object that ran it
+}
+
+SDL_Surface* SDL_SetVideoMode_Wrap(int width,int height,int bpp,Bit32u flags);
 
 void MAPPER_RunInternal() {
 	int cursor = SDL_ShowCursor(SDL_QUERY);
@@ -2551,83 +2603,25 @@ void MAPPER_RunInternal() {
 	if (mapper.window == NULL) E_Exit("Could not initialize video mode for mapper: %s",SDL_GetError());
 	mapper.surface = SDL_GetWindowSurface(mapper.window);
 #else
-	mapper.surface=SDL_SetVideoMode(640,480,0,0);
+	mapper.surface=SDL_SetVideoMode_Wrap(640,480,8,0);
 #endif
 	if (mapper.surface == NULL) E_Exit("Could not initialize video mode for mapper: %s",SDL_GetError());
-#if 0
-/* The endian part is intentionally disabled as somehow it produces correct results without according to rhoenie*/
-//#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-//	Bit32u rmask = 0xff000000;
-//	Bit32u gmask = 0x00ff0000;
-//	Bit32u bmask = 0x0000ff00;
-//#else
-	Bit32u rmask = 0x000000ff;
-	Bit32u gmask = 0x0000ff00;
-	Bit32u bmask = 0x00ff0000;
-//#endif
-	mapper.draw_surface=SDL_CreateRGBSurface(0,640,480,32,rmask,gmask,bmask,0);
-#endif
+
+	/* Set some palette entries */
 	mapper.draw_surface=SDL_CreateRGBSurface(0,640,480,8,0,0,0,0);
 #if SDL_VERSION_ATLEAST(2,0,0)
-#if 0
-	/* Set some palette entries (since we can't convert with SDL_BlitSurface) */
-	Uint8 bytesPerPixel = mapper.surface->format->BytesPerPixel;
-	sdl2_window_pal_ptr = (Uint8 *)malloc(5*bytesPerPixel);
-	Uint32 currColor;
-	for (int colorIndex = 0; colorIndex < 5; colorIndex++) {
-		currColor = SDL_MapRGBA(mapper.surface->format,
-		                        map_pal[colorIndex].r,
-		                        map_pal[colorIndex].g,
-		                        map_pal[colorIndex].b,
-		                        map_pal[colorIndex].a);
-		if (bytesPerPixel > sizeof(currColor)) {
-			memset(sdl2_window_pal_ptr + colorIndex*bytesPerPixel, 0, bytesPerPixel);
-#ifdef WORDS_BIGENDIAN
-			memcpy(sdl2_window_pal_ptr + colorIndex*bytesPerPixel + sizeof(currColor) - bytesPerPixel,
-			       &currColor, sizeof(currColor));
-#else
-			memcpy(sdl2_window_pal_ptr + colorIndex*bytesPerPixel,
-			       &currColor, sizeof(currColor));
-#endif
-		} else {
-#ifdef WORDS_BIGENDIAN
-			memcpy(sdl2_window_pal_ptr + colorIndex*bytesPerPixel,
-			       ((Uint8 *)&currColor) + sizeof(currColor) - bytesPerPixel, bytesPerPixel);
-#else
-			memcpy(sdl2_window_pal_ptr + colorIndex*bytesPerPixel,
-			       &currColor, bytesPerPixel);
-#endif
-		}
-#if 0
-		switch (mapper.surface->format->BytesPerPixel) {
-			case 1:
-				((Uint8 *)sdl2_window_pal_ptr)[colorIndex] = currColor;
-				break;
-			case 2:
-				((Uint16 *)sdl2_window_pal_ptr)[colorIndex] = currColor;
-				break;
-#if 0
-			case 3:
-				((Uint32 *)sdl2_window_pal_ptr)[colorIndex] = currColor;
-				break;
-#endif
-			case 4:
-				((Uint32 *)sdl2_window_pal_ptr)[colorIndex] = currColor;
-				break;
-			default: ; // Not much we can do here
-		}
-#endif
-	}
-#endif
+	// Needed for SDL_BlitScaled
+	mapper.draw_surface_nonpaletted=SDL_CreateRGBSurface(0,640,480,32,0x0000ff00,0x00ff0000,0xff000000,0);
+	mapper.draw_rect=GFX_GetSDLSurfaceSubwindowDims(640,480);
 	// Sorry, but SDL_SetSurfacePalette requires a full palette.
 	SDL_Palette *sdl2_map_pal_ptr = SDL_AllocPalette(256);
-	SDL_SetPaletteColors(sdl2_map_pal_ptr, map_pal, 0, 5);
+	SDL_SetPaletteColors(sdl2_map_pal_ptr, map_pal, 0, CLR_LAST);
 	SDL_SetSurfacePalette(mapper.draw_surface, sdl2_map_pal_ptr);
 #else	// !SDL_VERSION_ATLEAST(2,0,0)
-	SDL_SetPalette(mapper.draw_surface, SDL_LOGPAL|SDL_PHYSPAL, map_pal, 0, 5);
+	SDL_SetPalette(mapper.draw_surface, SDL_LOGPAL|SDL_PHYSPAL, map_pal, 0, CLR_LAST);
 #endif
 	if (last_clicked) {
-		last_clicked->SetColor(CLR_WHITE);
+		last_clicked->BindColor();
 		last_clicked=NULL;
 	}
 	/* Go in the event loop */
@@ -2655,10 +2649,8 @@ void MAPPER_RunInternal() {
 	Unless a memory leak is desired... */
 	SDL_FreeSurface(mapper.draw_surface);
 #if SDL_VERSION_ATLEAST(2,0,0)
+	SDL_FreeSurface(mapper.draw_surface_nonpaletted);
 	SDL_FreePalette(sdl2_map_pal_ptr);
-#if 0
-	free(sdl2_window_pal_ptr);
-#endif
 #endif
 #if defined (REDUCE_JOYSTICK_POLLING)
 	SDL_JoystickEventState(SDL_DISABLE);
@@ -2673,6 +2665,9 @@ void MAPPER_Init(void) {
 	CreateLayout();
 	CreateBindGroups();
 	if (!MAPPER_LoadBinds()) CreateDefaultBinds();
+	for (CButton_it but_it = buttons.begin();but_it!=buttons.end();but_it++) {
+		(*but_it)->BindColor();
+	}
 	if (SDL_GetModState()&KMOD_CAPS) {
 		for (CBindList_it bit=caps_lock_event->bindlist.begin();bit!=caps_lock_event->bindlist.end();bit++) {
 #if SDL_VERSION_ATLEAST(1, 2, 14)
@@ -2703,17 +2698,7 @@ void MAPPER_StartUp(Section * sec) {
 	Section_prop * section=static_cast<Section_prop *>(sec);
 	mapper.sticks.num=0;
 	mapper.sticks.num_groups=0;
-	Bitu i;
-	for (i=0; i<16; i++) {
-		virtual_joysticks[0].button_pressed[i]=false;
-		virtual_joysticks[1].button_pressed[i]=false;
-		virtual_joysticks[0].hat_pressed[i]=false;
-		virtual_joysticks[1].hat_pressed[i]=false;
-	}
-	for (i=0; i<8; i++) {
-		virtual_joysticks[0].axis_pos[i]=0;
-		virtual_joysticks[0].axis_pos[i]=0;
-	}
+	memset(&virtual_joysticks,0,sizeof(virtual_joysticks));
 
 #if !SDL_VERSION_ATLEAST(2,0,0)
 
@@ -2782,6 +2767,11 @@ void MAPPER_StartUp(Section * sec) {
 			sdlkey_map[0x77]=SDLK_PAUSE;
 			sdlkey_map[0x63]=SDLK_PRINT;
 			sdlkey_map[0x64]=SDLK_RALT;
+
+			//Win-keys
+			sdlkey_map[0x7d]=SDLK_LSUPER;
+			sdlkey_map[0x7e]=SDLK_RSUPER;
+			sdlkey_map[0x7f]=SDLK_MENU;
 		} else {
 			sdlkey_map[0x5a]=SDLK_UP;
 			sdlkey_map[0x60]=SDLK_DOWN;
@@ -2817,6 +2807,12 @@ void MAPPER_StartUp(Section * sec) {
 		sdlkey_map[0xc5]=SDLK_PAUSE;
 		sdlkey_map[0xb7]=SDLK_PRINT;
 		sdlkey_map[0xb8]=SDLK_RALT;
+
+		//Win-keys
+		sdlkey_map[0xdb]=SDLK_LMETA;
+		sdlkey_map[0xdc]=SDLK_RMETA;
+		sdlkey_map[0xdd]=SDLK_MENU;
+
 #endif
 
 		Bitu i;

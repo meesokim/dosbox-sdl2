@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -43,6 +43,8 @@ Bit16u FPU_GetTag(void){
 
 #if C_FPU_X86
 #include "fpu_instructions_x86.h"
+#elif HAVE_NEON
+#include "fpu_instructions_neon.h"
 #else
 #include "fpu_instructions.h"
 #endif

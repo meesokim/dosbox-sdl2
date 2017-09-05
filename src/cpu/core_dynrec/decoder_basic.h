@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -257,7 +257,11 @@ static void INLINE decode_increase_wmapmask(Bitu size) {
 	if (GCC_UNLIKELY(!activecb->cache.wmapmask)) {
 		// no mask memory yet allocated, start with a small buffer
 		activecb->cache.wmapmask=(Bit8u*)malloc(START_WMMEM);
+#if NEON_MEMORY
+			memset_neon(activecb->cache.wmapmask,0,START_WMMEM);
+#else
 		memset(activecb->cache.wmapmask,0,START_WMMEM);
+#endif
 		activecb->cache.maskstart=decode.page.index;	// start of buffer is current code position
 		activecb->cache.masklen=START_WMMEM;
 		mapidx=0;
@@ -268,8 +272,15 @@ static void INLINE decode_increase_wmapmask(Bitu size) {
 			Bitu newmasklen=activecb->cache.masklen*4;
 			if (newmasklen<mapidx+size) newmasklen=((mapidx+size)&~3)*2;
 			Bit8u* tempmem=(Bit8u*)malloc(newmasklen);
+#if NEON_MEMORY
+			memset_neon(tempmem,0,newmasklen);
+			memcpy_neon_UNAL(tempmem,activecb->cache.wmapmask,activecb->cache.masklen);
+#else
 			memset(tempmem,0,newmasklen);
 			memcpy(tempmem,activecb->cache.wmapmask,activecb->cache.masklen);
+#endif
+
+
 			free(activecb->cache.wmapmask);
 			activecb->cache.wmapmask=tempmem;
 			activecb->cache.masklen=newmasklen;
@@ -490,7 +501,8 @@ static INLINE void dyn_set_eip_end(void) {
 
 // set reg_eip to the start of the next instruction plus an offset (imm)
 static INLINE void dyn_set_eip_end(HostReg reg,Bit32u imm=0) {
-	gen_mov_word_to_reg(reg,&reg_eip,decode.big_op);
+	gen_mov_word_to_reg(reg,&reg_eip,true); //get_extend_word will mask off the upper bits
+	//gen_mov_word_to_reg(reg,&reg_eip,decode.big_op);
 	gen_add_imm(reg,(Bit32u)(decode.code-decode.code_start+imm));
 	if (!decode.big_op) gen_extend_word(false,reg);
 }

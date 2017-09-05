@@ -1,1 +1,0 @@
-The given SDLActivity.java file has had a few modifications applied, not just the addition of stlport_shared and SDL2_net as shared libraries to load.

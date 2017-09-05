@@ -16,23 +16,45 @@
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
 
-#ifndef DOSBOX_TIMER_H
-#define DOSBOX_TIMER_H
 
-/* underlying clock rate in HZ */
-#include <SDL.h>
+#ifndef DOSBOX_MIDI_H
+#define DOSBOX_MIDI_H
 
-#define PIT_TICK_RATE 1193182
+#ifndef DOSBOX_PROGRAMS_H
+#include "programs.h"
+#endif
 
-#define GetTicks() SDL_GetTicks()
+class MidiHandler {
+public:
+	MidiHandler();
+	virtual bool Open(const char * /*conf*/) { return true; };
+	virtual void Close(void) {};
+	virtual void PlayMsg(Bit8u * /*msg*/) {};
+	virtual void PlaySysex(Bit8u * /*sysex*/,Bitu /*len*/) {};
+	virtual const char * GetName(void) { return "none"; };
+	virtual void ListAll(Program * base) {};
+	virtual ~MidiHandler() { };
+	MidiHandler * next;
+};
 
-typedef void (*TIMER_TickHandler)(void);
 
-/* Register a function that gets called everytime if 1 or more ticks pass */
-void TIMER_AddTickHandler(TIMER_TickHandler handler);
-void TIMER_DelTickHandler(TIMER_TickHandler handler);
+#define SYSEX_SIZE 8192
+struct DB_Midi {
+	Bitu status;
+	Bitu cmd_len;
+	Bitu cmd_pos;
+	Bit8u cmd_buf[8];
+	Bit8u rt_buf[8];
+	struct {
+		Bit8u buf[SYSEX_SIZE];
+		Bitu used;
+		Bitu delay;
+		Bit32u start;
+	} sysex;
+	bool available;
+	MidiHandler * handler;
+};
 
-/* This will add 1 milliscond to all timers */
-void TIMER_AddTick(void);
+extern DB_Midi midi;
 
 #endif

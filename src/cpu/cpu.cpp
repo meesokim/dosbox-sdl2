@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -551,8 +551,8 @@ void CPU_Interrupt(Bitu num,Bitu type,Bitu oldeip) {
 	case 0xcd:
 #if C_HEAVY_DEBUG
  		LOG(LOG_CPU,LOG_ERROR)("Call to interrupt 0xCD this is BAD");
-		DEBUG_HeavyWriteLogInstruction();
-		E_Exit("Call to interrupt 0xCD this is BAD");
+//		DEBUG_HeavyWriteLogInstruction();
+//		E_Exit("Call to interrupt 0xCD this is BAD");
 #endif
 		break;
 	case 0x03:
@@ -1566,7 +1566,7 @@ void CPU_SET_CRX(Bitu cr,Bitu value) {
 					GFX_SetTitle(CPU_CyclePercUsed,-1,false);
 					if(!printed_cycles_auto_info) {
 						printed_cycles_auto_info = true;
-						LOG_MSG("DOSBox switched to max cycles, because of the setting: cycles=auto. If the game runs too fast try a fixed cycles amount in DOSBox's options.");
+						LOG_MSG("DOSBox has switched to max cycles, because of the setting: cycles=auto.\nIf the game runs too fast, try a fixed cycles amount in DOSBox's options.");
 					}
 				} else {
 					GFX_SetTitle(-1,-1,false);

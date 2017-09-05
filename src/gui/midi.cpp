@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@
 #include "SDL.h"
 
 #include "dosbox.h"
+#include "midi.h"
 #include "cross.h"
 #include "support.h"
 #include "setup.h"
@@ -33,7 +34,6 @@
 #include "hardware.h"
 #include "timer.h"
 
-#define SYSEX_SIZE 1024
 #define RAWBUF	1024
 
 Bit8u MIDI_evt_len[256] = {
@@ -59,24 +59,12 @@ Bit8u MIDI_evt_len[256] = {
   0,2,3,2, 0,0,1,0, 1,0,1,1, 1,0,1,0   // 0xf0
 };
 
-class MidiHandler;
-
 MidiHandler * handler_list=0;
 
-class MidiHandler {
-public:
-	MidiHandler() {
+MidiHandler::MidiHandler(){
 		next=handler_list;
 		handler_list=this;
 	};
-	virtual bool Open(const char * /*conf*/) { return true; };
-	virtual void Close(void) {};
-	virtual void PlayMsg(Bit8u * /*msg*/) {};
-	virtual void PlaySysex(Bit8u * /*sysex*/,Bitu /*len*/) {};
-	virtual const char * GetName(void) { return "none"; };
-	virtual ~MidiHandler() { };
-	MidiHandler * next;
-};
 
 MidiHandler Midi_none;
 
@@ -103,21 +91,7 @@ MidiHandler Midi_none;
 
 #endif
 
-static struct {
-	Bitu status;
-	Bitu cmd_len;
-	Bitu cmd_pos;
-	Bit8u cmd_buf[8];
-	Bit8u rt_buf[8];
-	struct {
-		Bit8u buf[SYSEX_SIZE];
-		Bitu used;
-		Bitu delay;
-		Bit32u start;
-	} sysex;
-	bool available;
-	MidiHandler * handler;
-} midi;
+DB_Midi midi;
 
 void MIDI_RawOutByte(Bit8u data) {
 	if (midi.sysex.start) {
@@ -156,7 +130,7 @@ void MIDI_RawOutByte(Bit8u data) {
 				}
 			}
 
-			LOG(LOG_ALL,LOG_NORMAL)("Sysex message size %d",midi.sysex.used);
+			LOG(LOG_ALL,LOG_NORMAL)("Sysex message size %d", static_cast<int>(midi.sysex.used));
 			if (CaptureState & CAPTURE_MIDI) {
 				CAPTURE_AddMidi( true, midi.sysex.used-1, &midi.sysex.buf[1]);
 			}

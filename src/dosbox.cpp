@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -128,6 +128,7 @@ static Bit32u ticksAdded;
 Bit32s ticksDone;
 Bit32u ticksScheduled;
 bool ticksLocked;
+void increaseticks();
 
 static Bitu Normal_Loop(void) {
 	Bits ret;
@@ -148,30 +149,55 @@ static Bitu Normal_Loop(void) {
 			if (ticksRemain>0) {
 				TIMER_AddTick();
 				ticksRemain--;
-			} else goto increaseticks;
+			} else {increaseticks();return 0;}
 		}
 	}
-increaseticks:
-	if (GCC_UNLIKELY(ticksLocked)) {
+}
+
+void increaseticks() { //Make it return ticksRemain and set it in the function above to remove the global variable.
+	if (GCC_UNLIKELY(ticksLocked)) { // For Fast Forward Mode
 		ticksRemain=5;
 		/* Reset any auto cycle guessing for this frame */
 		ticksLast = GetTicks();
 		ticksAdded = 0;
 		ticksDone = 0;
 		ticksScheduled = 0;
-	} else {
+		return;
+	}
+
 		Bit32u ticksNew;
 		ticksNew=GetTicks();
 		ticksScheduled += ticksAdded;
-		if (ticksNew > ticksLast) {
+	if (ticksNew <= ticksLast) { //lower should not be possible, only equal.
+		ticksAdded = 0;
+		SDL_Delay(1);
+		ticksDone -= GetTicks() - ticksNew;
+		if (ticksDone < 0)
+			ticksDone = 0;
+		return; //0
+
+		// If we do work this tick and sleep till the next tick, then ticksDone is decreased, 
+		// despite the fact that work was done as well in this tick. Maybe make it depend on an extra parameter.
+		// What do we know: ticksRemain = 0 (condition to enter this function)
+		// ticksNew = time before sleeping
+		
+		// maybe keep track of sleeped time in this frame, and use sleeped and done as indicators. (and take care of the fact there
+		// are frames that have both.
+	}
+
+	//TicksNew > ticksLast
 			ticksRemain = ticksNew-ticksLast;
 			ticksLast = ticksNew;
 			ticksDone += ticksRemain;
 			if ( ticksRemain > 20 ) {
+//		LOG(LOG_MISC,LOG_ERROR)("large remain %d",ticksRemain);
 				ticksRemain = 20;
 			}
 			ticksAdded = ticksRemain;
-			if (CPU_CycleAutoAdjust && !CPU_SkipCycleAutoAdjust) {
+
+	// Is the system in auto cycle mode guessing ? If not just exit. (It can be temporary disabled)
+	if (!CPU_CycleAutoAdjust || CPU_SkipCycleAutoAdjust) return;
+	
 				if (ticksScheduled >= 250 || ticksDone >= 250 || (ticksAdded > 15 && ticksScheduled >= 5) ) {
 					if(ticksDone < 1) ticksDone = 1; // Protect against div by zero
 					/* ratio we are aiming for is around 90% usage*/
@@ -188,19 +214,27 @@ increaseticks:
 							 * for very low ratios. High ratio might result because of timing resolution */
 							if (ticksScheduled >= 250 && ticksDone < 10 && ratio > 20480) 
 								ratio = 20480;
+				if (ratio <= 1024) {
+					double r = 2.0 /(1.0 + 1024.0/(static_cast<double>(ratio)));
+					new_cmax = 1 + static_cast<Bit32s>(CPU_CycleMax * r);
+				} else {
 							Bit64s cmax_scaled = (Bit64s)CPU_CycleMax * (Bit64s)ratio;
-							/* The auto cycle code seems reliable enough to disable the fast cut back code.
-							 * This should improve the fluency of complex games.
-							if (ratio <= 1024) 
-								new_cmax = (Bit32s)(cmax_scaled / (Bit64s)1024);
-							else 
-							 */
 							new_cmax = (Bit32s)(1 + (CPU_CycleMax >> 1) + cmax_scaled / (Bit64s)2048);
 						}
 					}
+		}
 
 					if (new_cmax<CPU_CYCLES_LOWER_LIMIT)
 						new_cmax=CPU_CYCLES_LOWER_LIMIT;
+		/*
+		LOG(LOG_MISC,LOG_ERROR)("cyclelog: current %06d   cmax %06d   ratio  %05d  done %03d   sched %03d Add %d",
+			CPU_CycleMax,
+			new_cmax,
+			ratio,
+			ticksDone,
+			ticksScheduled,
+			ticksAdded);
+		*/
 
 					/* ratios below 1% are considered to be dropouts due to
 					   temporary load imbalance, the cycles adjusting is skipped */
@@ -225,17 +259,7 @@ increaseticks:
 					CPU_CycleMax /= 3;
 					if (CPU_CycleMax < CPU_CYCLES_LOWER_LIMIT)
 						CPU_CycleMax = CPU_CYCLES_LOWER_LIMIT;
-				}
-			}
-		} else {
-			ticksAdded = 0;
-			SDL_Delay(1);
-			ticksDone -= GetTicks() - ticksNew;
-			if (ticksDone < 0)
-				ticksDone = 0;
-		}
-	}
-	return 0;
+	} //if (ticksScheduled >= 250 || ticksDone >= 250 || (ticksAdded > 15 && ticksScheduled >= 5) )
 }
 
 void DOSBOX_SetLoop(LoopHandler * handler) {
@@ -498,8 +522,8 @@ void DOSBOX_Init(void) {
 	Pstring->Set_help("Device that will receive the MIDI data from MPU-401.");
 
 	Pstring = secprop->Add_string("midiconfig",Property::Changeable::WhenIdle,"");
-	Pstring->Set_help("Special configuration options for the device driver. This is usually the id of the device you want to use.\n"
-	                  "  or in the case of coreaudio, you can specify a soundfont here.\n"
+	Pstring->Set_help("Special configuration options for the device driver. This is usually the id or part of the name of the device you want to use (find the id/name with mixer/listmidi).\n"
+	                  "  Or in the case of coreaudio, you can specify a soundfont here.\n"
 	                  "  When using a Roland MT-32 rev. 0 as midi output device, some games may require a delay in order to prevent 'buffer overflow' issues.\n"
 	                  "  In that case, add 'delaysysex', for example: midiconfig=2 delaysysex\n"
 	                  "  See the README/Manual for more details.");
@@ -534,7 +558,7 @@ void DOSBOX_Init(void) {
 	Pbool = secprop->Add_bool("sbmixer",Property::Changeable::WhenIdle,true);
 	Pbool->Set_help("Allow the soundblaster mixer to modify the DOSBox mixer.");
 
-	const char* oplmodes[]={ "auto", "cms", "opl2", "dualopl2", "opl3", "none", 0};
+	const char* oplmodes[]={ "auto", "cms", "opl2", "dualopl2", "opl3", "opl3gold", "none", 0};
 	Pstring = secprop->Add_string("oplmode",Property::Changeable::WhenIdle,"auto");
 	Pstring->Set_values(oplmodes);
 	Pstring->Set_help("Type of OPL emulation. On 'auto' the mode is determined by sblaster type. All OPL modes are Adlib-compatible, except for 'cms'.");

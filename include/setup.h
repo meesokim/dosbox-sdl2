@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -86,7 +86,7 @@ public:
 	Value(char const * const in) :_string(new std::string(in)),type(V_STRING) { };
 	Value(Value const& in):_string(0) {plaincopy(in);}
 	~Value() { destroy();};
-	Value(std::string const& in,Etype _t) :_string(0),type(V_NONE) {SetValue(in,_t);}
+	Value(std::string const& in,Etype _t) :_hex(0),_bool(false),_int(0),_string(0),_double(0),type(V_NONE) {SetValue(in,_t);}
 	
 	/* Assigment operators */
 	Value& operator= (Hex in) throw(WrongType)                { return copy(Value(in));}
@@ -129,19 +129,26 @@ public:
 	virtual	bool SetValue(std::string const& str)=0;
 	Value const& GetValue() const { return value;}
 	Value const& Get_Default_Value() const { return default_value; }
-	//CheckValue returns true  if value is in suggested_values;
+	//CheckValue returns true, if value is in suggested_values;
 	//Type specific properties are encouraged to override this and check for type
 	//specific features.
 	virtual bool CheckValue(Value const& in, bool warn);
-	//Set interval value to in or default if in is invalid. force always sets the value.
-	bool SetVal(Value const& in, bool forced,bool warn=true) {
-		if(forced || CheckValue(in,warn)) {value = in; return true;} else { value = default_value; return false;}}
+public:
 	virtual ~Property(){ } 
 	virtual const std::vector<Value>& GetValues() const;
 	Value::Etype Get_type(){return default_value.type;}
 	Changeable::Value getChange() {return change;}
 
 protected:
+	//Set interval value to in or default if in is invalid. force always sets the value.
+	//Can be overriden to set a different value if invalid.
+	virtual bool SetVal(Value const& in, bool forced,bool warn=true) {
+		if(forced || CheckValue(in,warn)) { 
+			value = in; return true;
+		} else { 
+			value = default_value; return false;
+		}
+	}
 	Value value;
 	std::vector<Value> suggested_values;
 	typedef std::vector<Value>::iterator iter;
@@ -168,6 +175,9 @@ public:
 	bool SetValue(std::string const& in);
 	~Prop_int(){ }
 	virtual bool CheckValue(Value const& in, bool warn);
+	// Override SetVal, so it takes min,max in account when there are no suggested values
+	virtual bool SetVal(Value const& in, bool forced,bool warn=true);
+	
 private:
 	Value min,max;
 };
@@ -294,10 +304,10 @@ public:
 class Prop_multival:public Property{
 protected:
 	Section_prop* section;
-	std::string seperator;
+	std::string separator;
 	void make_default_value();
 public:
-	Prop_multival(std::string const& _propname, Changeable::Value when,std::string const& sep):Property(_propname,when), section(new Section_prop("")),seperator(sep) {
+	Prop_multival(std::string const& _propname, Changeable::Value when,std::string const& sep):Property(_propname,when), section(new Section_prop("")),separator(sep) {
 		default_value = value = "";
 	}
 	Section_prop *GetSection() { return section; }

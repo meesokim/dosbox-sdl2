@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@
 CallBack_Handler CallBack_Handlers[CB_MAX];
 char* CallBack_Description[CB_MAX];
 
-static Bitu call_stop,call_idle,call_default,call_default2;
+static Bitu call_stop,call_idle,call_default;
 Bitu call_priv_io;
 
 static Bitu illegal_handler(void) {
@@ -256,7 +256,15 @@ Bitu CALLBACK_SetupExtra(Bitu callback, Bitu type, PhysPt physAddress, bool use_
 		phys_writew(physAddress+0x0b,(Bit16u)0x20e6);		// out 0x20, al
 		phys_writeb(physAddress+0x0d,(Bit8u)0x58);			// pop ax
 		phys_writeb(physAddress+0x0e,(Bit8u)0xcf);			//An IRET Instruction
-		return (use_cb?0x15:0x0f);
+		phys_writeb(physAddress+0x0f,(Bit8u)0xfa);			// cli
+		phys_writew(physAddress+0x10,(Bit16u)0x20b0);		// mov al, 0x20
+		phys_writew(physAddress+0x12,(Bit16u)0x20e6);		// out 0x20, al
+		phys_writeb(physAddress+0x14,(Bit8u)0x55);			// push bp
+		phys_writew(physAddress+0x15,(Bit16u)0x05cd);		// int 5
+		phys_writeb(physAddress+0x17,(Bit8u)0x5d);			// pop bp
+		phys_writeb(physAddress+0x18,(Bit8u)0x58);			// pop ax
+		phys_writeb(physAddress+0x19,(Bit8u)0xcf);			//An IRET Instruction
+		return (use_cb?0x20:0x1a);
 	case CB_IRQ9:	// pic cascade interrupt
 		if (use_cb) {
 			phys_writeb(physAddress+0x00,(Bit8u)0xFE);	//GRP 4
@@ -304,22 +312,26 @@ Bitu CALLBACK_SetupExtra(Bitu callback, Bitu type, PhysPt physAddress, bool use_
 		phys_writew(physAddress+0x01,(Bit16u)0x60e4);		// in al, 0x60
 		phys_writew(physAddress+0x03,(Bit16u)0xe03c);		// cmp al, 0xe0
 		if (use_cb) {
-			phys_writew(physAddress+0x05,(Bit16u)0x0674);	// je skip
+			phys_writew(physAddress+0x05,(Bit16u)0x0b74);	// je skip
 			phys_writeb(physAddress+0x07,(Bit8u)0xFE);		//GRP 4
 			phys_writeb(physAddress+0x08,(Bit8u)0x38);		//Extra Callback instruction
 			phys_writew(physAddress+0x09,(Bit16u)callback);			//The immediate word
 			physAddress+=4;
 		} else {
-			phys_writew(physAddress+0x05,(Bit16u)0x0274);	// je skip
+			phys_writew(physAddress+0x05,(Bit16u)0x0774);	// je skip
 		}
-		phys_writew(physAddress+0x07,(Bit16u)0x09cd);		// int 9
+		phys_writeb(physAddress+0x07,(Bit8u)0x1e);			// push ds
+		phys_writew(physAddress+0x08,(Bit16u)0x406a);		// push 0x0040
+		phys_writeb(physAddress+0x0a,(Bit8u)0x1f);			// pop ds
+		phys_writew(physAddress+0x0b,(Bit16u)0x09cd);		// int 9
+		phys_writeb(physAddress+0x0d,(Bit8u)0x1f);			// pop ds
 		// jump here to (skip):
-		phys_writeb(physAddress+0x09,(Bit8u)0xfa);			// cli
-		phys_writew(physAddress+0x0a,(Bit16u)0x20b0);		// mov al, 0x20
-		phys_writew(physAddress+0x0c,(Bit16u)0x20e6);		// out 0x20, al
-		phys_writeb(physAddress+0x0e,(Bit8u)0x58);			// pop ax
-		phys_writeb(physAddress+0x0f,(Bit8u)0xcf);			//An IRET Instruction
-		return (use_cb?0x14:0x10);
+		phys_writeb(physAddress+0x0e,(Bit8u)0xfa);			// cli
+		phys_writew(physAddress+0x0f,(Bit16u)0x20b0);		// mov al, 0x20
+		phys_writew(physAddress+0x11,(Bit16u)0x20e6);		// out 0x20, al
+		phys_writeb(physAddress+0x13,(Bit8u)0x58);			// pop ax
+		phys_writeb(physAddress+0x14,(Bit8u)0xcf);			//An IRET Instruction
+		return (use_cb?0x19:0x15);
 	case CB_MOUSE:
 		phys_writew(physAddress+0x00,(Bit16u)0x07eb);		// jmp i33hd
 		physAddress+=9;
@@ -563,8 +575,6 @@ void CALLBACK_Init(Section* /*sec*/) {
 	/* Default handlers for unhandled interrupts that have to be non-null */
 	call_default=CALLBACK_Allocate();
 	CALLBACK_Setup(call_default,&default_handler,CB_IRET,"default");
-	call_default2=CALLBACK_Allocate();
-	CALLBACK_Setup(call_default2,&default_handler,CB_IRET,"default");
 
 	/* Only setup default handler for first part of interrupt table */
 	for (Bit16u ct=0;ct<0x60;ct++) {
@@ -585,7 +595,6 @@ void CALLBACK_Init(Section* /*sec*/) {
 
 	}
 	// setup a few interrupt handlers that point to bios IRETs by default
-	real_writed(0,0x0e*4,CALLBACK_RealPointer(call_default2));	//design your own railroad
 	real_writed(0,0x66*4,CALLBACK_RealPointer(call_default));	//war2d
 	real_writed(0,0x67*4,CALLBACK_RealPointer(call_default));
 	real_writed(0,0x68*4,CALLBACK_RealPointer(call_default));

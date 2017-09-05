@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -80,10 +80,18 @@ public:
 	float volmain[2];
 	float scale;
 	Bit32s volmul[2];
-	Bitu freq_add,freq_index;
+	
+	//This gets added the frequency counter each mixer step
+	Bitu freq_add;
+	//When this flows over a new sample needs to be read from the device
+	Bitu freq_counter;
+	//Timing on how many samples have been done and were needed by th emixer
 	Bitu done,needed;
-	Bits last[2];
+	//Previous and next samples
+	Bits prevSample[2];
+	Bits nextSample[2];
 	const char * name;
+	bool interpolate;
 	bool enabled;
 	MixerChannel * next;
 };

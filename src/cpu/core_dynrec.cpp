@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -132,12 +132,12 @@ static struct {
 
 
 #include "core_dynrec/cache.h"
-#include "core_dynrec/risc_armv4le.h"
 
 #define X86			0x01
 #define X86_64		0x02
 #define MIPSEL		0x03
 #define ARMV4LE		0x04
+#define ARMV7LE		0x05
 #define POWERPC		0x04
 
 #if C_TARGETCPU == X86_64
@@ -146,7 +146,7 @@ static struct {
 #include "core_dynrec/risc_x86.h"
 #elif C_TARGETCPU == MIPSEL
 #include "core_dynrec/risc_mipsel32.h"
-#elif C_TARGETCPU == ARMV4LE
+#elif (C_TARGETCPU == ARMV4LE) || (C_TARGETCPU == ARMV7LE)
 #include "core_dynrec/risc_armv4le.h"
 #elif C_TARGETCPU == POWERPC
 #include "core_dynrec/risc_ppc.h"
@@ -232,8 +232,10 @@ run_block:
 
 		switch (ret) {
 		case BR_Iret:
+#if C_DEBUG
 #if C_HEAVY_DEBUG
 			if (DEBUG_HeavyIsBreakpoint()) return debugCallback;
+#endif
 #endif
 			if (!GETFLAG(TF)) {
 				if (GETFLAG(IF) && PIC_IRQCheck) return CBRET_NONE;
@@ -248,16 +250,20 @@ run_block:
 			// modifying instruction (like ret) or some nontrivial cpu state
 			// changing instruction (for example switch to/from pmode),
 			// or the maximum number of instructions to translate was reached
+#if C_DEBUG
 #if C_HEAVY_DEBUG
 			if (DEBUG_HeavyIsBreakpoint()) return debugCallback;
+#endif
 #endif
 			break;
 
 		case BR_Cycles:
 			// cycles went negative, return from the core to handle
 			// external events, schedule the pic...
+#if C_DEBUG
 #if C_HEAVY_DEBUG			
 			if (DEBUG_HeavyIsBreakpoint()) return debugCallback;
+#endif
 #endif
 			return CBRET_NONE;
 

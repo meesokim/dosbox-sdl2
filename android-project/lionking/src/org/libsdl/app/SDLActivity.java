@@ -32,6 +32,7 @@ import android.content.pm.ActivityInfo;
 import java.io.*;
 import android.content.res.AssetManager;
 import android.content.res.Configuration;
+import android.widget.Toast;
 
 /**
     SDL Activity
@@ -56,6 +57,7 @@ public class SDLActivity extends Activity {
     protected static View mTextEdit;
     protected static ViewGroup mLayout;
     protected static SDLJoystickHandler mJoystickHandler;
+	protected static boolean mKeyboard;
 
     // This is what SDL runs in. It invokes SDL_main(), eventually
     protected static Thread mSDLThread;
@@ -116,7 +118,6 @@ public class SDLActivity extends Activity {
         mIsPaused = false;
         mIsSurfaceReady = false;
         mHasFocus = true;
-		mSeparateMouseAndTouch = true;
     }
 	
     // Setup
@@ -176,7 +177,7 @@ public class SDLActivity extends Activity {
         else {
             mJoystickHandler = new SDLJoystickHandler();
         }
-	
+
         mLayout = new RelativeLayout(this);
         mLayout.addView(mSurface);
 
@@ -202,7 +203,7 @@ public class SDLActivity extends Activity {
 					  | View.SYSTEM_UI_FLAG_FULLSCREEN;
 		decorView.setSystemUiVisibility(uiOptions);
     }
-
+	
     // Events
     @Override
     protected void onPause() {
@@ -215,6 +216,13 @@ public class SDLActivity extends Activity {
 
         SDLActivity.handlePause();
     }
+	
+	public void onConfigurationChanged(Configuration newConfig){
+	    super.onConfigurationChanged(newConfig);
+		if ((newConfig.keyboardHidden & (Configuration.HARDKEYBOARDHIDDEN_NO | Configuration.HARDKEYBOARDHIDDEN_YES))!=0) {
+			SDLActivity.mKeyboard = true;
+		}
+	}	
 
     @Override
     protected void onResume() {
@@ -252,7 +260,6 @@ public class SDLActivity extends Activity {
         if (SDLActivity.mBrokenLibraries) {
            return;
         }
-
         SDLActivity.nativeLowMemory();
     }
 
@@ -289,11 +296,6 @@ public class SDLActivity extends Activity {
     }
 	
     @Override
-    public void onBackPressed() {
-        super.onBackPressed();
-    }		
-
-    @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
 
         if (SDLActivity.mBrokenLibraries) {
@@ -310,6 +312,19 @@ public class SDLActivity extends Activity {
             ) {
             return false;
         }
+		
+        if ((event.getSource() & InputDevice.SOURCE_KEYBOARD) != 0 || event.getSource() == 0) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN) {
+                //Log.v("SDL", "key down: " + keyCode + "(" + event.getSource() + ")");
+                SDLActivity.onNativeKeyDown(keyCode);
+                return true;
+            }
+            else if (event.getAction() == KeyEvent.ACTION_UP) {
+                //Log.v("SDL", "key up: " + keyCode + "(" + event.getSource() + ")");
+                SDLActivity.onNativeKeyUp(keyCode);
+                return true;
+            }
+        }		
         return super.dispatchKeyEvent(event);
     }
 
@@ -318,8 +333,9 @@ public class SDLActivity extends Activity {
      *  to 'true' during the call to onPause (in a usual scenario).
      */
     public static void handlePause() {
-        if (!SDLActivity.mIsPaused && SDLActivity.mIsSurfaceReady) {
+        if (!SDLActivity.mKeyboard && !SDLActivity.mIsPaused && SDLActivity.mIsSurfaceReady) {
             SDLActivity.mIsPaused = true;
+			SDLActivity.mKeyboard = false;
             SDLActivity.nativePause();
             mSurface.handlePause();
         }
@@ -392,8 +408,8 @@ public class SDLActivity extends Activity {
                     // The sizes will be set to useful values when the keyboard is shown again.
                     mTextEdit.setLayoutParams(new RelativeLayout.LayoutParams(0, 0));
 
- //                   InputMethodManager imm = (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
- //                   imm.hideSoftInputFromWindow(mTextEdit.getWindowToken(), 0);
+                    InputMethodManager imm = (InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
+                    imm.hideSoftInputFromWindow(mTextEdit.getWindowToken(), 0);
                 }
                 break;
             case COMMAND_SET_KEEP_SCREEN_ON:
@@ -552,8 +568,7 @@ public class SDLActivity extends Activity {
      */
     public static boolean showTextInput(int x, int y, int w, int h) {
         // Transfer the task to the main thread as a Runnable
-//        return mSingleton.commandHandler.post(new ShowTextInputTask(x, y, w, h));
-		return true;
+        return mSingleton.commandHandler.post(new ShowTextInputTask(x, y, w, h));
     }
 
     /**
@@ -713,6 +728,8 @@ public class SDLActivity extends Activity {
     }
 
 
+    // Input
+
     /**
      * This method is called by SDL using JNI.
      * @return an array which may be empty but is never null.
@@ -766,15 +783,6 @@ public class SDLActivity extends Activity {
 
     /** com.android.vending.expansion.zipfile.ZipResourceFile's getInputStream() or null. */
     private Method expansionFileMethod;
-
-    /**
-     * This method was called by SDL using JNI.
-     * @deprecated because of an incorrect name
-     */
-    @Deprecated
-    public InputStream openAPKExtensionInputStream(String fileName) throws IOException {
-        return openAPKExpansionInputStream(fileName);
-    }
 
     /**
      * This method is called by SDL using JNI.
@@ -1117,14 +1125,14 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     // Called when we have a valid drawing surface
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
-        Log.v("SDL", "surfaceCreated()");
+        Log.v(TAG, "surfaceCreated()");
         holder.setType(SurfaceHolder.SURFACE_TYPE_GPU);
     }
 
     // Called when we lose the surface
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
-        Log.v("SDL", "surfaceDestroyed()");
+        Log.v(TAG, "surfaceDestroyed()");
         // Call this *before* setting mIsSurfaceReady to 'false'
         SDLActivity.handlePause();
         SDLActivity.mIsSurfaceReady = false;
@@ -1135,7 +1143,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     @Override
     public void surfaceChanged(SurfaceHolder holder,
                                int format, int width, int height) {
-        Log.v("SDL", "surfaceChanged()");
+        Log.v(TAG, "surfaceChanged()");
 
         int sdlFormat = 0x15151002; // SDL_PIXELFORMAT_RGB565 by default
         switch (format) {
@@ -1194,7 +1202,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         {
             // Accept any
         }
-        else if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+        else if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT || requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT)
         {
             if (mWidth > mHeight) {
                skip = true;
@@ -1211,13 +1219,13 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
            double max = Math.max(mWidth, mHeight);
            
            if (max / min < 1.20) {
-              Log.v("SDL", "Don't skip on such aspect-ratio. Could be a square resolution.");
+              Log.v(TAG, "Don't skip on such aspect-ratio. Could be a square resolution.");
               skip = false;
            }
         }
 
         if (skip) {
-           Log.v("SDL", "Skip .. Surface is not ready.");
+           Log.v(TAG, "Skip .. Surface is not ready.");
            return;
         }
 
@@ -1233,13 +1241,13 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
             final Thread sdlThread = new Thread(new SDLMain(), "SDLThread");
             enableSensor(Sensor.TYPE_ACCELEROMETER, true);
+			sdlThread.start();
 
             // Set up a listener thread to catch when the native thread ends
             SDLActivity.mSDLThread = new Thread(new Runnable(){
                 @Override
                 public void run(){
                     try {
-						sdlThread.start();
                         sdlThread.join();
                     }
                     catch(Exception e){}
@@ -1282,6 +1290,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
             }
         }
 
+		/*
         if ((event.getSource() & InputDevice.SOURCE_KEYBOARD) != 0) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 Log.v("SDL", "key down: " + keyCode);
@@ -1294,7 +1303,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
                 return true;
             }
         }
-
+		*/
         if ((event.getSource() & InputDevice.SOURCE_MOUSE) != 0) {
             // on some devices key events are sent for mouse BUTTON_BACK/FORWARD presses
             // they are ignored here because sending them as mouse input to SDL is messy
@@ -1323,16 +1332,16 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
         int mouseButton = 1;
         int i = -1;
         float x,y,p;
-		
+
         // !!! FIXME: dump this SDK check after 2.0.4 ships and require API14.
         if (event.getSource() == InputDevice.SOURCE_MOUSE) {// && SDLActivity.mSeparateMouseAndTouch) {
 			if (Build.VERSION.SDK_INT > 13) {
-				try {
-					mouseButton = (Integer) event.getClass().getMethod("getButtonState").invoke(event);
-				} catch(Exception e) {
-					mouseButton = 1;    // oh well.
-				}
-			}
+                try {
+                    mouseButton = (Integer) event.getClass().getMethod("getButtonState").invoke(event);
+                } catch(Exception e) {
+                    mouseButton = 1;    // oh well.
+                }
+            }
 			SDLActivity.onNativeMouse(mouseButton, action, event.getX(pointerFingerId), event.getY(pointerFingerId));
         } else {
             switch(action) {
@@ -1353,7 +1362,6 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
 
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_DOWN:
-					//SDLActivity.onNativeKeyDown(KeyEvent.KEYCODE_ENTER);
                     // Primary pointer up/down, the index is always zero
                     i = 0;
                 case MotionEvent.ACTION_POINTER_UP:
@@ -1443,6 +1451,12 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
                                       event.values[2] / SensorManager.GRAVITY_EARTH);
         }
     }
+/*
+	@Override
+    public PointerIcon onResolvePointerIcon(MotionEvent event, int pointerIndex) {
+        return PointerIcon.getSystemIcon(getContext(), PointerIcon.TYPE_NULL);
+    }	
+*/
 }
 
 /* This is a fake invisible editor view that receives the input and defines the
@@ -1467,14 +1481,12 @@ class DummyEdit extends View implements View.OnKeyListener {
     public boolean onKey(View v, int keyCode, KeyEvent event) {
 
         // This handles the hardware keyboard input
-		/*
         if (event.isPrintingKey() || keyCode == KeyEvent.KEYCODE_SPACE) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
                 ic.commitText(String.valueOf((char) event.getUnicodeChar()), 1);
             }
             return true;
         }
-		*/
 
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             SDLActivity.onNativeKeyDown(keyCode);
@@ -1737,35 +1749,36 @@ class SDLGenericMotionListener_API12 implements View.OnGenericMotionListener {
         int action;
 		if (v == view)
 		{
-			switch ( event.getSource() ) {
-				case InputDevice.SOURCE_JOYSTICK:
-				case InputDevice.SOURCE_GAMEPAD:
-				case InputDevice.SOURCE_DPAD:
-					return SDLActivity.handleJoystickMotionEvent(event);
+        switch ( event.getSource() ) {
+            case InputDevice.SOURCE_JOYSTICK:
+            case InputDevice.SOURCE_GAMEPAD:
+            case InputDevice.SOURCE_DPAD:
+                return SDLActivity.handleJoystickMotionEvent(event);
 
-				case InputDevice.SOURCE_MOUSE:
-					action = event.getActionMasked();
-					switch (action) {
-						case MotionEvent.ACTION_SCROLL:
-							x = event.getAxisValue(MotionEvent.AXIS_HSCROLL, 0);
-							y = event.getAxisValue(MotionEvent.AXIS_VSCROLL, 0);
-							SDLActivity.onNativeMouse(0, action, x, y);
-							return true;
+            case InputDevice.SOURCE_MOUSE:
+                action = event.getActionMasked();
+                switch (action) {
+                    case MotionEvent.ACTION_SCROLL:
+                        x = event.getAxisValue(MotionEvent.AXIS_HSCROLL, 0);
+                        y = event.getAxisValue(MotionEvent.AXIS_VSCROLL, 0);
+                        SDLActivity.onNativeMouse(0, action, x, y);
+                        return true;
 
-						case MotionEvent.ACTION_HOVER_MOVE:
-							x = event.getX(0);
-							y = event.getY(0);
-							SDLActivity.onNativeMouse(0, action, x, y);
-							return true;
+                    case MotionEvent.ACTION_HOVER_MOVE:
+                        x = event.getX(0);
+                        y = event.getY(0);
 
-						default:
-							break;
-					}
-					break;
+                        SDLActivity.onNativeMouse(0, action, x, y);
+                        return true;
 
-				default:
-					break;
-			}
+                    default:
+                        break;
+                }
+                break;
+
+            default:
+                break;
+        	}
 		}
         // Event was not managed
         return false;

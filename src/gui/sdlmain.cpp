@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,11 +32,19 @@
 #include <process.h>
 #endif
 #ifdef ANDROID
+#ifndef __ANDROID__
+#define __ANDROID__
+#endif
+#endif
+#ifdef __ANDROID__
 #include <android/log.h>
 #endif
 
 #include "cross.h"
 #include "SDL.h"
+#if SDL_VERSION_ATLEAST(2,0,0) && C_PHYSICAL_CDROM_MOUNT
+#include "SDL_cdrom.h"
+#endif
 
 #include "dosbox.h"
 #include "video.h"
@@ -53,11 +61,15 @@
 #include "cross.h"
 #include "control.h"
 
+#if SDL_VERSION_ATLEAST(2,0,0)
+#define MAPPERFILE "mapper-sdl2-" VERSION ".map"
+#else
 #define MAPPERFILE "mapper-" VERSION ".map"
+#endif
 //#define DISABLE_JOYSTICK
 
 #if C_OPENGL
-#ifdef ANDROID
+#ifdef __ANDROID__
 #include "SDL_opengles.h"
 #else
 #include "SDL_opengl.h"
@@ -88,7 +100,7 @@ typedef GLvoid* (APIENTRYP PFNGLMAPBUFFERARBPROC) (GLenum target, GLenum access)
 typedef GLboolean (APIENTRYP PFNGLUNMAPBUFFERARBPROC) (GLenum target);
 #endif
 
-#ifndef ANDROID
+#ifndef __ANDROID__
 PFNGLGENBUFFERSARBPROC glGenBuffersARB = NULL;
 PFNGLBINDBUFFERARBPROC glBindBufferARB = NULL;
 PFNGLDELETEBUFFERSARBPROC glDeleteBuffersARB = NULL;
@@ -208,7 +220,7 @@ struct SDL_Block {
 		void * framebuf;
 		GLuint buffer;
 		GLuint texture;
-#ifdef ANDROID // OpenGL ES
+#ifdef __ANDROID__ // OpenGL ES
 		GLfloat vertCoords[8];
 		GLfloat texCoords[8];
 #else // OpenGL (not ES)
@@ -254,7 +266,7 @@ struct SDL_Block {
 		bool requestlock;
 		bool locked;
 		Bitu sensitivity;
-#ifdef ANDROID
+#ifdef __ANDROID__
 		SDL_FingerID leftMouseFingerID, rightMouseFingerID,
 		             middleMouseFingerID, mouseMotionFingerID,
 		             escKeyFingerID;
@@ -266,13 +278,106 @@ struct SDL_Block {
 	Bitu num_joysticks;
 #if defined (WIN32)
 	bool using_windib;
+	// Time when sdl regains focus (alt-tab) in windowed mode
+	Bit32u focus_ticks;
 #endif
 	// state of alt-keys for certain special handlings
-	Bit16u laltstate;
-	Bit16u raltstate;
+	SDL_EventType laltstate;
+	SDL_EventType raltstate;
 };
 
 static SDL_Block sdl;
+
+#if !SDL_VERSION_ATLEAST(2,0,0)
+
+#define SETMODE_SAVES 1  //Don't set Video Mode if nothing changes.
+#define SETMODE_SAVES_CLEAR 1 //Clear the screen, when the Video Mode is reused
+SDL_Surface* SDL_SetVideoMode_Wrap(int width,int height,int bpp,Bit32u flags){
+#if SETMODE_SAVES
+	static int i_height = 0;
+	static int i_width = 0;
+	static int i_bpp = 0;
+	static Bit32u i_flags = 0;
+	if (sdl.surface != NULL && height == i_height && width == i_width && bpp == i_bpp && flags == i_flags) {
+		// I don't see a difference, so disabled for now, as the code isn't finished either
+#if SETMODE_SAVES_CLEAR
+		//TODO clear it.
+#ifdef C_OPENGL
+		if ((flags & SDL_OPENGL)==0)
+			SDL_FillRect(sdl.surface,NULL,SDL_MapRGB(sdl.surface->format,0,0,0));
+		else {
+			glClearColor (0.0, 0.0, 0.0, 1.0);
+			glClear(GL_COLOR_BUFFER_BIT);
+			SDL_GL_SwapBuffers();
+		}
+#else //C_OPENGL
+		SDL_FillRect(sdl.surface,NULL,SDL_MapRGB(sdl.surface->format,0,0,0));
+#endif //C_OPENGL
+#endif //SETMODE_SAVES_CLEAR
+		return sdl.surface;
+	}
+
+
+#ifdef WIN32
+	//SDL seems to crash if we are in OpenGL mode currently and change to exactly the same size without OpenGL.
+	//This happens when DOSBox is in textmode with aspect=true and output=opengl and the mapper is started.
+	//The easiest solution is to change the size. The mapper doesn't care. (PART PXX)
+
+	//Also we have to switch back to windowed mode first, as else it may crash as well.
+	//Bug: we end up with a locked mouse cursor, but at least that beats crashing. (output=opengl,aspect=true,fullscreen=true)
+	if((i_flags&SDL_OPENGL) && !(flags&SDL_OPENGL) && (i_flags&SDL_FULLSCREEN) && !(flags&SDL_FULLSCREEN)){
+		GFX_SwitchFullScreen();
+		return SDL_SetVideoMode_Wrap(width,height,bpp,flags);
+	}
+
+	//PXX
+	if ((i_flags&SDL_OPENGL) && !(flags&SDL_OPENGL) && height==i_height && width==i_width && height==480) {
+		height++;
+	}
+#endif //WIN32
+#endif //SETMODE_SAVES
+	SDL_Surface* s = SDL_SetVideoMode(width,height,bpp,flags);
+#if SETMODE_SAVES
+	if (s == NULL) return s; //Only store when successful
+	i_height = height;
+	i_width = width;
+	i_bpp = bpp;
+	i_flags = flags;
+#endif
+	return s;
+}
+
+#endif // !SDL_VERSION_ATLEAST(2,0,0)
+
+#if SDL_VERSION_ATLEAST(2,0,0)
+static int SDL_Init_Wrapper(void)
+{
+	int result = ( SDL_Init( SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER
+		|SDL_INIT_NOPARACHUTE
+	));
+#if C_PHYSICAL_CDROM_MOUNT
+	return (result < 0) ? result : Compat_SDL_CDROMInit();
+#else
+	return result;
+#endif
+}
+#else
+static int SDL_Init_Wrapper(void)
+{
+	return (SDL_Init( SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER
+		|SDL_INIT_CDROM
+		|SDL_INIT_NOPARACHUTE
+	));
+}
+#endif
+
+static void SDL_Quit_Wrapper(void)
+{
+#if SDL_VERSION_ATLEAST(2,0,0) && C_PHYSICAL_CDROM_MOUNT
+	Compat_SDL_CDROMQuit();
+#endif
+	SDL_Quit();
+}
 
 extern const char* RunningProgram;
 extern bool CPU_CycleAutoAdjust;
@@ -283,7 +388,7 @@ bool startup_state_capslock=false;
 void GFX_SetTitle(Bit32s cycles,Bits frameskip,bool paused){
 	char title[200]={0};
 	static Bit32s internal_cycles=0;
-	static Bits internal_frameskip=0;
+	static Bit32s internal_frameskip=0;
 	if(cycles != -1) internal_cycles = cycles;
 	if(frameskip != -1) internal_frameskip = frameskip;
 	if(CPU_CycleAutoAdjust) {
@@ -364,7 +469,15 @@ static void PauseDOSBox(bool pressed) {
 				break;
 			}
 #if defined (MACOSX)
-			if (event.key.keysym.sym == SDLK_q && (event.key.keysym.mod == KMOD_RMETA || event.key.keysym.mod == KMOD_LMETA) ) {
+			if (event.key.keysym.sym == SDLK_q &&
+#if SDL_VERSION_ATLEAST(2,0,0)
+			    (event.key.keysym.mod == KMOD_RGUI ||
+			     event.key.keysym.mod == KMOD_LGUI)
+#else
+			    (event.key.keysym.mod == KMOD_RMETA ||
+			     event.key.keysym.mod == KMOD_LMETA)
+#endif
+			   ) {
 				/* On macs, all aps exit when pressing cmd-q */
 				KillSwitch(true);
 				break;
@@ -456,7 +569,7 @@ check_gotbpp:
 #endif	// !SDL_VERSION_ATLEAST(2,0,0)
 #if C_OPENGL
 	case SCREEN_OPENGL:
-#ifdef ANDROID
+#ifdef __ANDROID__
 		if (!(flags&GFX_CAN_32)) goto check_surface; // RGBA is used on Android (OpenGL ES v1.1)
 #else
 		if (flags & GFX_RGBONLY || !(flags&GFX_CAN_32)) goto check_surface; // BGRA otherwise
@@ -501,7 +614,6 @@ static int int_log2 (int val) {
 #if SDL_VERSION_ATLEAST(2,0,0)
 
 static SDL_Window * GFX_SetSDLWindowMode(Bit16u width, Bit16u height, bool fullscreen, SCREEN_TYPES screenType) {
-//static SDL_Window * GFX_SetSDLWindowMode(Bit16u width, Bit16u height, bool fullscreen, bool glwindow) {
 	static SCREEN_TYPES lastType = SCREEN_SURFACE; 
 	if (sdl.renderer) {
 		SDL_DestroyRenderer(sdl.renderer);
@@ -516,8 +628,6 @@ static SDL_Window * GFX_SetSDLWindowMode(Bit16u width, Bit16u height, bool fulls
 		sdl.texture.texture=0;
 	}
 #if C_OPENGL
-	/* Should fix this border-related fullscreen bug on some platforms(?)
-	http://vogons.zetafleet.com/viewtopic.php?t=27487                  */
 	if (sdl.opengl.context) {
 		SDL_GL_DeleteContext(sdl.opengl.context);
 		sdl.opengl.context=0;
@@ -554,8 +664,7 @@ static SDL_Window * GFX_SetSDLWindowMode(Bit16u width, Bit16u height, bool fulls
 		                 SDL_WINDOWPOS_UNDEFINED_DISPLAY(sdl.displayNumber),
 		                 width, height,
 		                 (fullscreen ? (sdl.desktop.full.display_res ? SDL_WINDOW_FULLSCREEN_DESKTOP : SDL_WINDOW_FULLSCREEN) : 0)
-//		                 | (glwindow ? SDL_WINDOW_OPENGL : 0) | SDL_WINDOW_SHOWN);
-		                 | SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+		                 | ((screenType == SCREEN_OPENGL) ? SDL_WINDOW_OPENGL : 0) | SDL_WINDOW_SHOWN);
 		if (sdl.window)
 			GFX_SetTitle(-1,-1,false); //refresh title.
 		SDL_GetWindowSize(sdl.window, &currWidth, &currHeight);
@@ -568,6 +677,7 @@ static SDL_Window * GFX_SetSDLWindowMode(Bit16u width, Bit16u height, bool fulls
 	 * although it has its own issues.
 	 * Suggestion: Use the desktop res if possible, with output=surface
 	 * if one is not interested in scaling.
+	 * On Android, desktop res is the only way.
 	 */
 	if (fullscreen) {
 		SDL_DisplayMode displayMode;
@@ -576,7 +686,7 @@ static SDL_Window * GFX_SetSDLWindowMode(Bit16u width, Bit16u height, bool fulls
 		displayMode.h = height;
 		SDL_SetWindowDisplayMode(sdl.window, &displayMode);
 
-		SDL_SetWindowFullscreen(sdl.window, SDL_WINDOW_FULLSCREEN);
+		SDL_SetWindowFullscreen(sdl.window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 	} else {
 		SDL_SetWindowFullscreen(sdl.window, 0);
 
@@ -588,49 +698,113 @@ static SDL_Window * GFX_SetSDLWindowMode(Bit16u width, Bit16u height, bool fulls
 	return sdl.window;
 }
 
-// Used for the mapper and more (fullscreen on Android, windowed otherwise)
+// Used for the mapper UI and more: Creates a fullscreen window with desktop res
+// on Android, and a non-fullscreen window with the input dimensions otherwise.
 SDL_Window * GFX_SetSDLSurfaceWindow(Bit16u width, Bit16u height) {
-#ifdef ANDROID
-	return GFX_SetSDLWindowMode(width, height, true, SCREEN_SURFACE);
+#ifdef __ANDROID__
+	return GFX_SetSDLWindowMode(sdl.desktop.full.width, sdl.desktop.full.height, true, SCREEN_SURFACE);
 #else
 	return GFX_SetSDLWindowMode(width, height, false, SCREEN_SURFACE);
 #endif
 }
 
+// Returns the rectangle in the current window to be used for scaling a
+// sub-window with the given dimensions, like the mapper UI.
+SDL_Rect GFX_GetSDLSurfaceSubwindowDims(Bit16u width, Bit16u height) {
+	SDL_Rect rect;
+#ifdef __ANDROID__
+	// Wider than width:height
+	if (height*sdl.desktop.full.width > sdl.desktop.full.height*width) {
+		rect.w=sdl.desktop.full.height*width/height;
+		rect.h=sdl.desktop.full.height;
+		rect.x=(sdl.desktop.full.width-rect.w)/2;
+		rect.y=0;
+	} else { // NOT wider than width:height
+		rect.w=sdl.desktop.full.width;
+		rect.h=sdl.desktop.full.width*height/width;
+		rect.x=0;
+		rect.y=(sdl.desktop.full.height-rect.h)/2;
+	}
+#else
+	rect.x=rect.y=0;
+	rect.w=width;
+	rect.h=height;
+#endif
+	return rect;
+}
+
 // Currently used for an initial test here
 static SDL_Window * GFX_SetSDLOpenGLWindow(Bit16u width, Bit16u height) {
-#ifdef ANDROID
-	return GFX_SetSDLWindowMode(width, height, true, SCREEN_OPENGL);
+#ifdef __ANDROID__
+	return GFX_SetSDLWindowMode(sdl.desktop.full.width, sdl.desktop.full.height, true, SCREEN_OPENGL);
 #else
 	return GFX_SetSDLWindowMode(width, height, false, SCREEN_OPENGL);
 #endif
 }
 
-static SDL_Window * GFX_SetupWindowScaled(SCREEN_TYPES screenType) {
+#endif // SDL_VERSION_ATLEAST(2,0,0)
+
+// Different functions, similar function bodies (SDL 1.2 vs 2.0)
+
+#if SDL_VERSION_ATLEAST(2,0,0)
+static SDL_Window * GFX_SetupWindowScaled(SCREEN_TYPES screenType)
+#else
+static SDL_Surface * GFX_SetupSurfaceScaled(Bit32u sdl_flags, Bit32u bpp)
+#endif
+{
 	Bit16u fixedWidth;
 	Bit16u fixedHeight;
 
 	if (sdl.desktop.fullscreen) {
 		fixedWidth = sdl.desktop.full.fixed ? sdl.desktop.full.width : 0;
 		fixedHeight = sdl.desktop.full.fixed ? sdl.desktop.full.height : 0;
+#if !SDL_VERSION_ATLEAST(2,0,0)
+		sdl_flags |= SDL_FULLSCREEN|SDL_HWSURFACE;
+#endif
 	} else {
 		fixedWidth = sdl.desktop.window.width;
 		fixedHeight = sdl.desktop.window.height;
+#if !SDL_VERSION_ATLEAST(2,0,0)
+		sdl_flags |= SDL_HWSURFACE;
+#endif
 	}
 	if (fixedWidth && fixedHeight) {
 		double ratio_w=(double)fixedWidth/(sdl.draw.width*sdl.draw.scalex);
 		double ratio_h=(double)fixedHeight/(sdl.draw.height*sdl.draw.scaley);
 		if ( ratio_w < ratio_h) {
-			sdl.clip.w=(Bit16u)fixedWidth;
-			sdl.clip.h=(Bit16u)(sdl.draw.height*sdl.draw.scaley*ratio_w);
+			sdl.clip.w=fixedWidth;
+			sdl.clip.h=(Bit16u)(sdl.draw.height*sdl.draw.scaley*ratio_w + 0.1); //possible rounding issues
 		} else {
-			sdl.clip.w=(Bit16u)(sdl.draw.width*sdl.draw.scalex*ratio_h);
+			/*
+			 * The 0.4 is there to correct for rounding issues.
+			 * (partly caused by the rounding issues fix in RENDER_SetSize)
+			 */
+			sdl.clip.w=(Bit16u)(sdl.draw.width*sdl.draw.scalex*ratio_h + 0.4);
 			sdl.clip.h=(Bit16u)fixedHeight;
 		}
 		if (sdl.desktop.fullscreen) {
+#if SDL_VERSION_ATLEAST(2,0,0)
 			sdl.window = GFX_SetSDLWindowMode(fixedWidth, fixedHeight, sdl.desktop.fullscreen, screenType);
-			sdl.clip.x=(Sint16)((fixedWidth-sdl.clip.w)/2);
-#ifdef ANDROID
+#else
+			sdl.surface = SDL_SetVideoMode_Wrap(fixedWidth,fixedHeight,bpp,sdl_flags);
+#endif
+		} else {
+#if SDL_VERSION_ATLEAST(2,0,0)
+			sdl.window = GFX_SetSDLWindowMode(sdl.clip.w, sdl.clip.h, sdl.desktop.fullscreen, screenType);
+#else
+			sdl.surface = SDL_SetVideoMode_Wrap(sdl.clip.w,sdl.clip.h,bpp,sdl_flags);
+#endif
+		}
+#if SDL_VERSION_ATLEAST(2,0,0)
+		if (sdl.window && SDL_GetWindowFlags(sdl.window) & SDL_WINDOW_FULLSCREEN) {
+			int windowWidth;
+			SDL_GetWindowSize(sdl.window, &windowWidth, NULL);
+			sdl.clip.x=(Sint16)((windowWidth-sdl.clip.w)/2);
+#else
+		if (sdl.surface && sdl.surface->flags & SDL_FULLSCREEN) {
+			sdl.clip.x=(Sint16)((sdl.surface->w-sdl.clip.w)/2);
+#endif
+#ifdef __ANDROID__
 			/* Portrait orientation and on-screen keyboards
 			are commonly found on that platform          */
 			sdl.clip.y=0;
@@ -638,65 +812,27 @@ static SDL_Window * GFX_SetupWindowScaled(SCREEN_TYPES screenType) {
 			sdl.clip.y=(Sint16)((fixedHeight-sdl.clip.h)/2);
 #endif
 		} else {
-			sdl.window = GFX_SetSDLWindowMode(sdl.clip.w, sdl.clip.h, sdl.desktop.fullscreen, screenType);
 			sdl.clip.x = 0;
 			sdl.clip.y = 0;
 		}
+#if SDL_VERSION_ATLEAST(2,0,0)
 		return sdl.window;
+#else
+		return sdl.surface;
+#endif
 	} else {
 		sdl.clip.x=0;sdl.clip.y=0;
 		sdl.clip.w=(Bit16u)(sdl.draw.width*sdl.draw.scalex);
 		sdl.clip.h=(Bit16u)(sdl.draw.height*sdl.draw.scaley);
+#if SDL_VERSION_ATLEAST(2,0,0)
 		sdl.window = GFX_SetSDLWindowMode(sdl.clip.w, sdl.clip.h, sdl.desktop.fullscreen, screenType);
 		return sdl.window;
-	}
-}
-
 #else
-static SDL_Surface * GFX_SetupSurfaceScaled(Bit32u sdl_flags, Bit32u bpp) {
-	Bit16u fixedWidth;
-	Bit16u fixedHeight;
-
-	if (sdl.desktop.fullscreen) {
-		fixedWidth = sdl.desktop.full.fixed ? sdl.desktop.full.width : 0;
-		fixedHeight = sdl.desktop.full.fixed ? sdl.desktop.full.height : 0;
-		sdl_flags |= SDL_FULLSCREEN|SDL_HWSURFACE;
-	} else {
-		fixedWidth = sdl.desktop.window.width;
-		fixedHeight = sdl.desktop.window.height;
-		sdl_flags |= SDL_HWSURFACE;
-	}
-	if (fixedWidth && fixedHeight) {
-		double ratio_w=(double)fixedWidth/(sdl.draw.width*sdl.draw.scalex);
-		double ratio_h=(double)fixedHeight/(sdl.draw.height*sdl.draw.scaley);
-		if ( ratio_w < ratio_h) {
-			sdl.clip.w=fixedWidth;
-			sdl.clip.h=(Bit16u)(sdl.draw.height*sdl.draw.scaley*ratio_w);
-		} else {
-			sdl.clip.w=(Bit16u)(sdl.draw.width*sdl.draw.scalex*ratio_h);
-			sdl.clip.h=(Bit16u)fixedHeight;
-		}
-		if (sdl.desktop.fullscreen)
-			sdl.surface = SDL_SetVideoMode(fixedWidth,fixedHeight,bpp,sdl_flags);
-		else
-			sdl.surface = SDL_SetVideoMode(sdl.clip.w,sdl.clip.h,bpp,sdl_flags);
-		if (sdl.surface && sdl.surface->flags & SDL_FULLSCREEN) {
-			sdl.clip.x=(Sint16)((sdl.surface->w-sdl.clip.w)/2);
-			sdl.clip.y=(Sint16)((sdl.surface->h-sdl.clip.h)/2);
-		} else {
-			sdl.clip.x = 0;
-			sdl.clip.y = 0;
-		}
+		sdl.surface=SDL_SetVideoMode_Wrap(sdl.clip.w,sdl.clip.h,bpp,sdl_flags);
 		return sdl.surface;
-	} else {
-		sdl.clip.x=0;sdl.clip.y=0;
-		sdl.clip.w=(Bit16u)(sdl.draw.width*sdl.draw.scalex);
-		sdl.clip.h=(Bit16u)(sdl.draw.height*sdl.draw.scaley);
-		sdl.surface=SDL_SetVideoMode(sdl.clip.w,sdl.clip.h,bpp,sdl_flags);
-		return sdl.surface;
+#endif
 	}
 }
-#endif // SDL_VERSION_ATLEAST(2,0,0)
 
 #if 0 // NOTE: Do we need this? Never used and can't be used as-is with SDL 2.0
 void GFX_TearDown(void) {
@@ -722,7 +858,8 @@ Bitu GFX_SetSize(Bitu width,Bitu height,Bitu flags,double scalex,double scaley,G
 
 	Bitu retFlags = 0;
 #if !SDL_VERSION_ATLEAST(2,0,0)
-	Bitu bpp=0;
+	int bpp=0;
+
 	if (sdl.blit.surface) {
 		SDL_FreeSurface(sdl.blit.surface);
 		sdl.blit.surface=0;
@@ -743,7 +880,7 @@ dosurface:
 		if (sdl.desktop.fullscreen) {
 			if (sdl.desktop.full.fixed) {
 				sdl.clip.x=(Sint16)((sdl.desktop.full.width-width)/2);
-#ifdef ANDROID
+#ifdef __ANDROID__
 				/* Portrait orientation and on-screen keyboards
 				are commonly found on that platform          */
 				sdl.clip.y=0;
@@ -757,7 +894,7 @@ dosurface:
 				if (sdl.window == NULL)
 					E_Exit("Could not set fullscreen video mode %ix%i-%i: %s",sdl.desktop.full.width,sdl.desktop.full.height,sdl.desktop.bpp,SDL_GetError());
 #else
-				sdl.surface=SDL_SetVideoMode(sdl.desktop.full.width,sdl.desktop.full.height,bpp,
+				sdl.surface=SDL_SetVideoMode_Wrap(sdl.desktop.full.width,sdl.desktop.full.height,bpp,
 					SDL_FULLSCREEN | ((flags & GFX_CAN_RANDOM) ? SDL_SWSURFACE : SDL_HWSURFACE) |
 					(sdl.desktop.vsync ? SDL_DOUBLEBUF|SDL_ASYNCBLIT : 0) | SDL_HWPALETTE);
 				if (sdl.surface == NULL) E_Exit("Could not set fullscreen video mode %ix%i-%i: %s",sdl.desktop.full.width,sdl.desktop.full.height,bpp,SDL_GetError());
@@ -768,13 +905,13 @@ dosurface:
 				sdl.window = GFX_SetSDLWindowMode(width, height,
 				                                  sdl.desktop.fullscreen, sdl.desktop.type);
 				if (sdl.window == NULL)
-					E_Exit("Could not set fullscreen video mode %ix%i-%i: %s",width,height,sdl.desktop.bpp,SDL_GetError());
+					E_Exit("Could not set fullscreen video mode %ix%i-%i: %s",(int)width,(int)height,sdl.desktop.bpp,SDL_GetError());
 #else
-				sdl.surface=SDL_SetVideoMode(width,height,bpp,
+				sdl.surface=SDL_SetVideoMode_Wrap(width,height,bpp,
 					SDL_FULLSCREEN | ((flags & GFX_CAN_RANDOM) ? SDL_SWSURFACE : SDL_HWSURFACE) |
 					(sdl.desktop.vsync ? SDL_DOUBLEBUF|SDL_ASYNCBLIT  : 0)|SDL_HWPALETTE);
 				if (sdl.surface == NULL)
-					E_Exit("Could not set fullscreen video mode %ix%i-%i: %s",width,height,bpp,SDL_GetError());
+					E_Exit("Could not set fullscreen video mode %ix%i-%i: %s",(int)width,(int)height,bpp,SDL_GetError());
 #endif
 			}
 		} else {
@@ -783,9 +920,9 @@ dosurface:
 			sdl.window = GFX_SetSDLWindowMode(width, height,
 			                                  sdl.desktop.fullscreen, sdl.desktop.type);
 			if (sdl.window == NULL)
-				E_Exit("Could not set windowed video mode %ix%i-%i: %s",width,height,sdl.desktop.bpp,SDL_GetError());
+				E_Exit("Could not set windowed video mode %ix%i-%i: %s",(int)width,(int)height,sdl.desktop.bpp,SDL_GetError());
 #else
-			sdl.surface=SDL_SetVideoMode(width,height,bpp,(flags & GFX_CAN_RANDOM) ? SDL_SWSURFACE : SDL_HWSURFACE);
+			sdl.surface=SDL_SetVideoMode_Wrap(width,height,bpp,(flags & GFX_CAN_RANDOM) ? SDL_SWSURFACE : SDL_HWSURFACE);
 #ifdef WIN32
 			if (sdl.surface == NULL) {
 				SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -800,12 +937,12 @@ dosurface:
 				}
 				SDL_InitSubSystem(SDL_INIT_VIDEO);
 				GFX_SetIcon(); //Set Icon again
-				sdl.surface = SDL_SetVideoMode(width,height,bpp,SDL_HWSURFACE);
+				sdl.surface = SDL_SetVideoMode_Wrap(width,height,bpp,SDL_HWSURFACE);
 				if(sdl.surface) GFX_SetTitle(-1,-1,false); //refresh title.
 			}
 #endif
 			if (sdl.surface == NULL)
-				E_Exit("Could not set windowed video mode %ix%i-%i: %s",width,height,bpp,SDL_GetError());
+				E_Exit("Could not set windowed video mode %ix%i-%i: %s",(int)width,(int)height,bpp,SDL_GetError());
 #endif	// !SDL_VERSION_ATLEAST(2,0,0)
 		}
 #if SDL_VERSION_ATLEAST(2,0,0)
@@ -828,8 +965,8 @@ dosurface:
 				break;
 		}
 #if SDL_VERSION_ATLEAST(2,0,0)
-		/* Fix a glitch with aspect=true occuring when changing between
-		graphical (aspect=true) and text (aspect=false) modes        */
+		/* Fix a glitch with aspect=true occuring when
+		changing between modes with different dimensions */
 		SDL_FillRect(sdl.surface, NULL, SDL_MapRGB(sdl.surface->format, 0, 0, 0));
 		SDL_UpdateWindowSurface(sdl.window);
 #else
@@ -873,8 +1010,8 @@ dosurface:
 		rendering drivers, "opengles" being a notable exception */
 		sdl.texture.texture = SDL_CreateTexture(sdl.renderer, SDL_PIXELFORMAT_ARGB8888,
 		                                        SDL_TEXTUREACCESS_STREAMING, width, height);
-		/* SDL_PIXELFORMAT_ABGR8888 (not RGB) is the only supported
-		format for supported format for the "opengles" driver    */
+		/* SDL_PIXELFORMAT_ABGR8888 (not RGB) is the
+		only supported format for the "opengles" driver */
 		if (!sdl.texture.texture) {
 			if (flags & GFX_RGBONLY) goto dosurface;
 			sdl.texture.texture = SDL_CreateTexture(sdl.renderer, SDL_PIXELFORMAT_ABGR8888,
@@ -972,7 +1109,7 @@ dosurface:
 #if C_OPENGL
 	case SCREEN_OPENGL:
 	{
-#ifndef ANDROID
+#ifndef __ANDROID__
 		if (sdl.opengl.pixel_buffer_object) {
 			glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_EXT, 0);
 			if (sdl.opengl.buffer) glDeleteBuffersARB(1, &sdl.opengl.buffer);
@@ -982,7 +1119,7 @@ dosurface:
 			free(sdl.opengl.framebuf);
 		}
 		sdl.opengl.framebuf=0;
-#ifdef ANDROID
+#ifdef __ANDROID__
 		if (!(flags&GFX_CAN_32)) goto dosurface; // RGBA is used on Android (OpenGL ES v1.1)
 #else
 		if (!(flags&GFX_CAN_32) || (flags & GFX_RGBONLY)) goto dosurface; // BGRA otherwise
@@ -993,7 +1130,7 @@ dosurface:
 			goto dosurface;
 		}
 		SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1 );
-#ifdef ANDROID
+#ifdef __ANDROID__
 		/* WARNING: OpenGL ES v2.0 is NOT backwards compatible
 		 * with v1.1! For simplicity we force v1.1 for now,
 		 * although v2.0 is probably the better way.
@@ -1027,7 +1164,7 @@ dosurface:
 		}
 #endif	// !SDL_VERSION_ATLEAST(2,0,0)
 		/* Create the texture and display list */
-#ifndef ANDROID
+#ifndef __ANDROID__
 		if (sdl.opengl.pixel_buffer_object) {
 			glGenBuffersARB(1, &sdl.opengl.buffer);
 			glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_EXT, sdl.opengl.buffer);
@@ -1039,19 +1176,13 @@ dosurface:
 			sdl.opengl.framebuf=malloc(width*height*4);		//32 bit color
 		}
 		sdl.opengl.pitch=width*4;
-#if SDL_VERSION_ATLEAST(2,0,0)
-		int windowHeight;
-		SDL_GetWindowSize(sdl.window, NULL, &windowHeight);
-		glViewport(sdl.clip.x,windowHeight-(sdl.clip.y+sdl.clip.h),sdl.clip.w,sdl.clip.h);
-#else
-		glViewport(sdl.clip.x,sdl.surface->h-(sdl.clip.y+sdl.clip.h),sdl.clip.w,sdl.clip.h);
-#endif
+		glViewport(sdl.clip.x,sdl.clip.y,sdl.clip.w,sdl.clip.h);
 		glMatrixMode (GL_PROJECTION);
 		glDeleteTextures(1,&sdl.opengl.texture);
  		glGenTextures(1,&sdl.opengl.texture);
 		glBindTexture(GL_TEXTURE_2D,sdl.opengl.texture);
 		// No borders
-#ifdef ANDROID
+#ifdef __ANDROID__
 		/* Plain OpenGL ES (v1.1) has no mention
 		of GL_CLAMP, so use GL_CLAMP_TO_EDGE  */
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -1068,7 +1199,7 @@ dosurface:
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		}
 
-#ifdef ANDROID	// OpenGL ES
+#ifdef __ANDROID__	// OpenGL ES
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texsize, texsize, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0);
 #else
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, texsize, texsize, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, 0);
@@ -1086,7 +1217,7 @@ dosurface:
 		GLfloat tex_width=((GLfloat)(width)/(GLfloat)texsize);
 		GLfloat tex_height=((GLfloat)(height)/(GLfloat)texsize);
 
-#ifdef ANDROID
+#ifdef __ANDROID__
 		/* Display lists are not available with OpenGL ES (1.0, 2.0).
 		Furthermore, we can't use glBegin, glTexCoord2f and glEnd. */
 		sdl.opengl.texCoords[0] = 0; sdl.opengl.texCoords[1] = tex_height; // lower left
@@ -1113,7 +1244,7 @@ dosurface:
 #endif
 		sdl.desktop.type=SCREEN_OPENGL;
 		retFlags = GFX_CAN_32 | GFX_SCALING;
-#ifndef ANDROID
+#ifndef __ANDROID__
 		if (sdl.opengl.pixel_buffer_object)
 			retFlags |= GFX_HARDWARE;
 #endif
@@ -1310,7 +1441,7 @@ bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch) {
 #endif	// !SDL_VERSION_ATLEAST(2,0,0)
 #if C_OPENGL
 	case SCREEN_OPENGL:
-#ifndef ANDROID
+#ifndef __ANDROID__
 		if(sdl.opengl.pixel_buffer_object) {
 		    glBindBufferARB(GL_PIXEL_UNPACK_BUFFER_EXT, sdl.opengl.buffer);
 		    pixels=(Bit8u *)glMapBufferARB(GL_PIXEL_UNPACK_BUFFER_EXT, GL_WRITE_ONLY);
@@ -1428,7 +1559,7 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 #endif	// !SDL_VERSION_ATLEAST(2,0,0)
 #if C_OPENGL
 	case SCREEN_OPENGL:
-#ifndef ANDROID
+#ifndef __ANDROID__
 		if (sdl.opengl.pixel_buffer_object) {
 			glUnmapBufferARB(GL_PIXEL_UNPACK_BUFFER_EXT);
 			glBindTexture(GL_TEXTURE_2D, sdl.opengl.texture);
@@ -1443,7 +1574,7 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
  			SDL_GL_SwapBuffers();
 #endif
 		} else
-#endif	// ifndef ANDROID
+#endif	// ifndef __ANDROID__
 		if (changedLines) {
 			Bitu y = 0, index = 0;
 			glBindTexture(GL_TEXTURE_2D, sdl.opengl.texture);
@@ -1453,7 +1584,7 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 				} else {
 					Bit8u *pixels = (Bit8u *)sdl.opengl.framebuf + y * sdl.opengl.pitch;
 					Bitu height = changedLines[index];
-#ifdef ANDROID
+#ifdef __ANDROID__
 					/* Try GL_UNSIGNED_BYTE... */
 					glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y,
 						sdl.draw.width, height, GL_RGBA,
@@ -1467,7 +1598,7 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 				}
 				index++;
 			}
-#ifdef ANDROID
+#ifdef __ANDROID__
 			/* We can't use display lists with OpenGL ES
 			and we should use Vertex Buffer Arrays    */
 			glClear(GL_COLOR_BUFFER_BIT);
@@ -1482,9 +1613,9 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 
 			glDisableClientState(GL_VERTEX_ARRAY);
 			glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-#else	// !ANDROID
+#else	// !__ANDROID__
 			glCallList(sdl.opengl.displaylist);
-#endif	// !ANDROID
+#endif	// !__ANDROID__
 #if SDL_VERSION_ATLEAST(2,0,0)
 			SDL_GL_SwapWindow(sdl.window);
 #else
@@ -1539,7 +1670,7 @@ Bitu GFX_GetRGB(Bit8u red,Bit8u green,Bit8u blue) {
 		}
 #endif	// !SDL_VERSION_ATLEAST(2,0,0)
 	case SCREEN_OPENGL:
-#ifdef ANDROID
+#ifdef __ANDROID__
 		//Use RGBA on Android with OpenGL ES v1.1
 		return ((red << 0) | (green << 8) | (blue << 16)) | (255 << 24);
 #else
@@ -1571,6 +1702,22 @@ void GFX_ObtainDisplayDimensions() {
 	sdl.desktop.full.width = displayDimensions.w;
 	sdl.desktop.full.height = displayDimensions.h;
 
+}
+
+/* Manually update display dimensions in case of a window resize,
+ * IF there is the need for that ("yes" on Android, "no" otherwise).
+ * Used for the mapper UI on Android.
+ * Reason is the usage of GFX_GetSDLSurfaceSubwindowDims, as well as a
+ * mere notification of the fact that the window's dimensions are modified.
+ */
+void GFX_UpdateDisplayDimensions(int width, int height) {
+	if (sdl.desktop.full.display_res && sdl.desktop.fullscreen) {
+		/* Note: We should not use GFX_ObtainDisplayDimensions
+		(SDL_GetDisplayBounds) on Android after a screen rotation:
+		The older values from application startup are returned. */
+		sdl.desktop.full.width = width;
+		sdl.desktop.full.height = height;
+	}
 }
 #endif
 
@@ -1674,7 +1821,7 @@ static void GUI_StartUp(Section * sec) {
 	sdl.desktop.lazy_fullscreen=false;
 	sdl.desktop.lazy_fullscreen_req=false;
 
-#ifdef ANDROID
+#ifdef __ANDROID__
 	sdl.desktop.fullscreen=true;
 #else
 	sdl.desktop.fullscreen=section->Get_bool("fullscreen");
@@ -1707,17 +1854,21 @@ static void GUI_StartUp(Section * sec) {
 	sdl.mouse.locked=false;
 	mouselocked=false; //Global for mapper
 	sdl.mouse.requestlock=false;
-#ifdef ANDROID
+#ifdef __ANDROID__
 	sdl.mouse.isLeftMouseFingerUsed=sdl.mouse.isRightMouseFingerUsed=false;
 	sdl.mouse.isMiddleMouseFingerUsed=sdl.mouse.isEscKeyFingerUsed=false;
-#endif
+	/* We force fullscreen desktop resolution */
+	sdl.desktop.full.fixed=true;
+#else
 	sdl.desktop.full.fixed=false;
 	const char* fullresolution=section->Get_string("fullresolution");
+#endif
 	sdl.desktop.full.width  = 0;
 	sdl.desktop.full.height = 0;
+#ifndef __ANDROID__
 	if(fullresolution && *fullresolution) {
 		char res[100];
-		strncpy( res, fullresolution, sizeof( res ));
+		safe_strncpy( res, fullresolution, sizeof( res ));
 		fullresolution = lowcase (res);//so x and X are allowed
 		if (strcmp(fullresolution,"original")) {
 			sdl.desktop.full.fixed = true;
@@ -1731,14 +1882,14 @@ static void GUI_StartUp(Section * sec) {
 			}
 		}
 	}
-
+#endif
 	sdl.desktop.window.width  = 0;
 	sdl.desktop.window.height = 0;
-#ifndef ANDROID
+#ifndef __ANDROID__
 	const char* windowresolution=section->Get_string("windowresolution");
 	if(windowresolution && *windowresolution) {
 		char res[100];
-		strncpy( res,windowresolution, sizeof( res ));
+		safe_strncpy( res,windowresolution, sizeof( res ));
 		windowresolution = lowcase (res);//so x and X are allowed
 		if(strcmp(windowresolution,"original")) {
 			char* height = const_cast<char*>(strchr(windowresolution,'x'));
@@ -1760,7 +1911,7 @@ static void GUI_StartUp(Section * sec) {
 		sdl.displayNumber = 0;
 		LOG_MSG("SDL:Display number out of bounds, switching back to 0");
 	}
-	sdl.desktop.full.display_res = (!sdl.desktop.full.width || !sdl.desktop.full.height);
+	sdl.desktop.full.display_res = sdl.desktop.full.fixed && (!sdl.desktop.full.width || !sdl.desktop.full.height);
 	if (sdl.desktop.full.display_res) {
 		GFX_ObtainDisplayDimensions();
 	}
@@ -1845,7 +1996,7 @@ static void GUI_StartUp(Section * sec) {
 	sdl.overlay=0;
 #endif
 
-#if (defined C_OPENGL) && (defined ANDROID) // OpenGL ES
+#if (defined C_OPENGL) && (defined __ANDROID__) // OpenGL ES
 	static const GLfloat vertCoords[] = {
 	-1, -1, //  lower left
 	1, -1, // lower right
@@ -1870,7 +2021,7 @@ static void GUI_StartUp(Section * sec) {
 	}
 	if (sdl.desktop.want_type==SCREEN_OPENGL) {
 #else	// Same story but for SDL 1.2
-	sdl.surface=SDL_SetVideoMode(640,400,0,SDL_OPENGL);
+	sdl.surface=SDL_SetVideoMode_Wrap(640,400,0,SDL_OPENGL);
 	if (sdl.surface == NULL) {
 		LOG_MSG("Could not initialize OpenGL, switching back to surface");
 		sdl.desktop.want_type=SCREEN_SURFACE;
@@ -1879,12 +2030,12 @@ static void GUI_StartUp(Section * sec) {
 	sdl.opengl.buffer=0;
 	sdl.opengl.framebuf=0;
 	sdl.opengl.texture=0;
-#ifndef ANDROID
+#ifndef __ANDROID__
 	sdl.opengl.displaylist=0;
 #endif
 
 	glGetIntegerv (GL_MAX_TEXTURE_SIZE, &sdl.opengl.max_texsize);
-#ifndef ANDROID
+#ifndef __ANDROID__
 	glGenBuffersARB = (PFNGLGENBUFFERSARBPROC)SDL_GL_GetProcAddress("glGenBuffersARB");
 	glBindBufferARB = (PFNGLBINDBUFFERARBPROC)SDL_GL_GetProcAddress("glBindBufferARB");
 	glDeleteBuffersARB = (PFNGLDELETEBUFFERSARBPROC)SDL_GL_GetProcAddress("glDeleteBuffersARB");
@@ -1893,9 +2044,9 @@ static void GUI_StartUp(Section * sec) {
 	glUnmapBufferARB = (PFNGLUNMAPBUFFERARBPROC)SDL_GL_GetProcAddress("glUnmapBufferARB");
 	const char * gl_ext = (const char *)glGetString (GL_EXTENSIONS);
 	if(gl_ext && *gl_ext){
-		sdl.opengl.packed_pixel=(strstr(gl_ext,"EXT_packed_pixels") > 0);
-		sdl.opengl.paletted_texture=(strstr(gl_ext,"EXT_paletted_texture") > 0);
-		sdl.opengl.pixel_buffer_object=(strstr(gl_ext,"GL_ARB_pixel_buffer_object") >0 ) &&
+		sdl.opengl.packed_pixel=(strstr(gl_ext,"EXT_packed_pixels") != NULL);
+		sdl.opengl.paletted_texture=(strstr(gl_ext,"EXT_paletted_texture") != NULL);
+		sdl.opengl.pixel_buffer_object=(strstr(gl_ext,"GL_ARB_pixel_buffer_object") != NULL ) &&
 		    glGenBuffersARB && glBindBufferARB && glDeleteBuffersARB && glBufferDataARB &&
 		    glMapBufferARB && glUnmapBufferARB;
     	} else {
@@ -2053,7 +2204,7 @@ static void GUI_StartUp(Section * sec) {
 #if C_DEBUG
 	/* Pause binds with activate-debugger */
 #else
-	MAPPER_AddHandler(&PauseDOSBox, MK_pause, MMOD2, "pause", "Pause");
+	MAPPER_AddHandler(&PauseDOSBox, MK_pause, MMOD2, "pause", "Pause DBox");
 #endif
 	/* Get Keyboard state of numlock and capslock */
 #if SDL_VERSION_ATLEAST(2,0,0)
@@ -2074,7 +2225,7 @@ void Mouse_AutoLock(bool enable) {
 	}
 }
 
-#if defined(ANDROID)
+#if defined(__ANDROID__)
 /* The way mouse emulation is done here is based on the
 following (horizontal) partitioning of the touchscreen:
 
@@ -2144,21 +2295,13 @@ static void HandleTouchFinger(SDL_TouchFingerEvent * tfinger) {
 			if (sdl.mouse.mouseMotionFingerID == tfinger->fingerId) {
 				Mouse_CursorMoved((float)tfinger->dx*sdl.clip.w*sdl.mouse.sensitivity/100.0f,
 				                  (float)tfinger->dy*sdl.clip.h*sdl.mouse.sensitivity/100.0f,
-				                  tfinger->x * sdl.desktop.full.width, tfinger->y * sdl.desktop.full.height, true);
+				                  0, 0, true);
 			}
 			break;
 	}
 }
 
-static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
-//	if (sdl.mouse.locked || !sdl.mouse.autoenable)
-		Mouse_CursorMoved((float)0,
-						  (float)0,
-						  (float)(motion->x-sdl.clip.x)/(sdl.desktop.full.width-sdl.clip.x*2)*(sdl.clip.w-1),
-						  (float)(motion->y-sdl.clip.y)/(sdl.desktop.full.height-sdl.clip.y*2)*(sdl.clip.h-1), 0);
-	__android_log_print(ANDROID_LOG_DEBUG, "MOUSE", "motion.x=%f,,motion.y=%f,clip.x=%d,clip.y=%d,clip.w=%d,clip.h=%d,fx=%d,fy=%d", motion->x, motion->y, sdl.clip.x, sdl.clip.y, sdl.draw.width, sdl.draw.height, sdl.desktop.full.width, sdl.desktop.full.height);
-}
-#else						  
+#else	// Not on Android
 static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
 	if (sdl.mouse.locked || !sdl.mouse.autoenable)
 		Mouse_CursorMoved((float)motion->xrel*sdl.mouse.sensitivity/100.0f,
@@ -2167,13 +2310,10 @@ static void HandleMouseMotion(SDL_MouseMotionEvent * motion) {
 						  (float)(motion->y-sdl.clip.y)/(sdl.clip.h-1)*sdl.mouse.sensitivity/100.0f,
 						  sdl.mouse.locked);
 }
-#endif	// End of touch/mouse differentiation
-
 
 static void HandleMouseButton(SDL_MouseButtonEvent * button) {
 	switch (button->state) {
 	case SDL_PRESSED:
-#ifndef ANDROID	
 		if (sdl.mouse.requestlock && !sdl.mouse.locked) {
 			GFX_CaptureMouse();
 			// Dont pass klick to mouse handler
@@ -2183,10 +2323,6 @@ static void HandleMouseButton(SDL_MouseButtonEvent * button) {
 			GFX_CaptureMouse();
 			break;
 		}
-#else		
-		GFX_CaptureMouse();
-#endif
-		
 		switch (button->button) {
 		case SDL_BUTTON_LEFT:
 			Mouse_ButtonPressed(0);
@@ -2214,6 +2350,7 @@ static void HandleMouseButton(SDL_MouseButtonEvent * button) {
 		break;
 	}
 }
+#endif	// End of touch/mouse differentiation
 
 void GFX_LosingFocus(void) {
 	sdl.laltstate=SDL_KEYUP;
@@ -2361,6 +2498,9 @@ void GFX_Events() {
 		case SDL_ACTIVEEVENT:
 			if (event.active.state & SDL_APPINPUTFOCUS) {
 				if (event.active.gain) {
+#ifdef WIN32
+					if (!sdl.desktop.fullscreen) sdl.focus_ticks = GetTicks();
+#endif
 					if (sdl.desktop.fullscreen && !sdl.mouse.locked)
 						GFX_CaptureMouse();
 					SetPriority(sdl.priority.focus);
@@ -2429,13 +2569,13 @@ void GFX_Events() {
 			}
 			break;
 #endif	// !SDL_VERSION_ATLEAST(2,0,0)
-#if defined(ANDROID)
+#if defined(__ANDROID__)
 		case SDL_FINGERDOWN:
 		case SDL_FINGERUP:
 		case SDL_FINGERMOTION:
 			HandleTouchFinger(&event.tfinger);
 			break;
-#endif
+#else
 		case SDL_MOUSEMOTION:
 			HandleMouseMotion(&event.motion);
 			break;
@@ -2443,6 +2583,7 @@ void GFX_Events() {
 		case SDL_MOUSEBUTTONUP:
 			HandleMouseButton(&event.button);
 			break;
+#endif
 #if !SDL_VERSION_ATLEAST(2,0,0)
 		case SDL_VIDEORESIZE:
 			//GFX_HandleVideoResize(event.resize.w, event.resize.h);
@@ -2460,16 +2601,28 @@ void GFX_Events() {
 		case SDL_KEYDOWN:
 		case SDL_KEYUP:
 			// ignore event alt+tab
-			if (event.key.keysym.sym==SDLK_LALT) sdl.laltstate = event.key.type;
-			if (event.key.keysym.sym==SDLK_RALT) sdl.raltstate = event.key.type;
+			if (event.key.keysym.sym==SDLK_LALT) sdl.laltstate = (SDL_EventType)event.key.type;
+			if (event.key.keysym.sym==SDLK_RALT) sdl.raltstate = (SDL_EventType)event.key.type;
 			if (((event.key.keysym.sym==SDLK_TAB)) &&
 				((sdl.laltstate==SDL_KEYDOWN) || (sdl.raltstate==SDL_KEYDOWN))) break;
+			// This can happen as well.
+			if (((event.key.keysym.sym == SDLK_TAB )) && (event.key.keysym.mod & KMOD_ALT)) break;
+			// ignore tab events that arrive just after regaining focus. (likely the result of alt-tab)
+			if ((event.key.keysym.sym == SDLK_TAB) && (GetTicks() - sdl.focus_ticks < 2)) break;
 #endif
 #if defined (MACOSX)			
 		case SDL_KEYDOWN:
 		case SDL_KEYUP:
 			/* On macs CMD-Q is the default key to close an application */
-			if (event.key.keysym.sym == SDLK_q && (event.key.keysym.mod == KMOD_RMETA || event.key.keysym.mod == KMOD_LMETA) ) {
+			if (event.key.keysym.sym == SDLK_q &&
+#if SDL_VERSION_ATLEAST(2,0,0)
+			    (event.key.keysym.mod == KMOD_RGUI ||
+			     event.key.keysym.mod == KMOD_LGUI)
+#else
+			    (event.key.keysym.mod == KMOD_RMETA ||
+			     event.key.keysym.mod == KMOD_LMETA)
+#endif
+			    ) {
 				KillSwitch(true);
 				break;
 			} 
@@ -2508,7 +2661,7 @@ void GFX_ShowMsg(char const* format,...) {
 	vsprintf(buf,format,msg);
         strcat(buf,"\n");
 	va_end(msg);
-#ifdef ANDROID
+#ifdef __ANDROID__
 	__android_log_print(ANDROID_LOG_DEBUG, "DOSBox", "%s", buf);
 #else
 	if(!no_stdout) printf("%s",buf); //Else buf is parsed again.
@@ -2524,21 +2677,18 @@ void Config_Add_SDL() {
 	Prop_int* Pint;
 	Prop_multival* Pmulti;
 
-#ifndef ANDROID
 	Pbool = sdl_sec->Add_bool("fullscreen",Property::Changeable::Always,false);
 	Pbool->Set_help("Start dosbox directly in fullscreen. (Press ALT-Enter to go back)");
-#endif
      
-	Pbool = sdl_sec->Add_bool("vsync",Property::Changeable::Always,false);
-	Pbool->Set_help("Sync to Vblank IF supported by the output device and renderer (if relevant).\n"
-	                "It can reduce screen flickering, but it can also result in a slow DOSBox.");
+	Pbool = sdl_sec->Add_bool("fulldouble",Property::Changeable::Always,false);
+	Pbool->Set_help("Use double buffering in fullscreen. It can reduce screen flickering, but it can also result in a slow DOSBox.");
 
-	Pstring = sdl_sec->Add_string("fullresolution",Property::Changeable::Always,"0x0");
+	Pstring = sdl_sec->Add_string("fullresolution",Property::Changeable::Always,"original");
 	Pstring->Set_help("What resolution to use for fullscreen: original, desktop or a fixed size (e.g. 1024x768).\n"
 	                  "  Using your monitor's native resolution with aspect=true might give the best results.\n"
 			  "  If you end up with small window on a large screen, try an output different from surface.");
 
-#ifndef ANDROID
+#ifndef __ANDROID__
 	Pstring = sdl_sec->Add_string("windowresolution",Property::Changeable::Always,"original");
 	Pstring->Set_help("Scale the window to this size IF the output device supports hardware scaling.\n"
 	                  "  (output=surface does not!)");
@@ -2573,7 +2723,7 @@ void Config_Add_SDL() {
 #ifdef WIN32
 		"direct3d",
 #endif
-#ifdef ANDROID
+#ifdef __ANDROID__
 		"opengles2",
 		"opengles",
 #else	// On any platform other than Android
@@ -2632,7 +2782,7 @@ static void show_warning(char const * const message) {
 		if (!GFX_SetSDLSurfaceWindow(640,400)) return;
 	sdl.surface = SDL_GetWindowSurface(sdl.window);
 #else
-	if(!sdl.surface) sdl.surface = SDL_SetVideoMode(640,400,0,0);
+	if(!sdl.surface) sdl.surface = SDL_SetVideoMode_Wrap(640,400,0,0);
 #endif
 	if(!sdl.surface) return;
 
@@ -2706,13 +2856,24 @@ void restart_program(std::vector<std::string> & parameters) {
 	newargs[parameters.size()] = NULL;
 	SDL_CloseAudio();
 	SDL_Delay(50);
-	SDL_Quit();
+	SDL_Quit_Wrapper();
 #if C_DEBUG
 	// shutdown curses
 	DEBUG_ShutDown(NULL);
 #endif
 
-	execvp(newargs[0], newargs);
+	if(execvp(newargs[0], newargs) == -1) {
+#ifdef WIN32
+		if(newargs[0][0] == '\"') {
+			//everything specifies quotes around it if it contains a space, however my system disagrees
+			std::string edit = parameters[0];
+			edit.erase(0,1);edit.erase(edit.length() - 1,1);
+			//However keep the first argument of the passed argv (newargs) with quotes, as else repeated restarts go wrong.
+			if(execvp(edit.c_str(), newargs) == -1) E_Exit("Restarting failed");
+		}
+#endif
+		E_Exit("Restarting failed");
+	}
 	free(newargs);
 }
 void Restart(bool pressed) { // mapper handler
@@ -2840,7 +3001,7 @@ int main(int argc, char* argv[]) {
 #endif  //defined(WIN32) && !(C_DEBUG)
 		if (control->cmdline->FindExist("-version") ||
 		    control->cmdline->FindExist("--version") ) {
-			printf("\nDOSBox version %s, copyright 2002-2013 DOSBox Team.\n\n",VERSION);
+			printf("\nDOSBox version %s, copyright 2002-2017 DOSBox Team.\n\n",VERSION);
 			printf("DOSBox is written by the DOSBox Team (See AUTHORS file))\n");
 			printf("DOSBox comes with ABSOLUTELY NO WARRANTY.  This is free software,\n");
 			printf("and you are welcome to redistribute it under certain conditions;\n");
@@ -2868,7 +3029,7 @@ int main(int argc, char* argv[]) {
 
 	/* Display Welcometext in the console */
 	LOG_MSG("DOSBox version %s",VERSION);
-	LOG_MSG("Copyright 2002-2013 DOSBox Team, published under GNU GPL.");
+	LOG_MSG("Copyright 2002-2017 DOSBox Team, published under GNU GPL.");
 	LOG_MSG("---");
 
 	/* Init SDL */
@@ -2879,16 +3040,17 @@ int main(int argc, char* argv[]) {
 	 */
 	putenv(const_cast<char*>("SDL_DISABLE_LOCK_KEYS=1"));
 #endif
-	if ( SDL_Init( SDL_INIT_AUDIO|SDL_INIT_VIDEO|SDL_INIT_TIMER
-#if !SDL_VERSION_ATLEAST(2,0,0)
-		|SDL_INIT_CDROM
-#endif
-		|SDL_INIT_NOPARACHUTE
-		) < 0 ) E_Exit("Can't init SDL %s",SDL_GetError());
+	if ( SDL_Init_Wrapper() < 0 )
+		E_Exit("Can't init SDL %s",SDL_GetError());
 	sdl.inited = true;
 
 #ifndef DISABLE_JOYSTICK
-	//Initialise Joystick seperately. This way we can warn when it fails instead
+#ifdef __ANDROID__
+	// Disable accelerometer-as-joystick emulation
+	// (available for backwards compatibility)
+	SDL_SetHint(SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0");
+#endif
+	//Initialise Joystick separately. This way we can warn when it fails instead
 	//of exiting the application
 	if( SDL_InitSubSystem(SDL_INIT_JOYSTICK) < 0 ) LOG_MSG("Failed to init joystick support");
 #endif
@@ -3028,20 +3190,10 @@ int main(int argc, char* argv[]) {
 
 	}
 	catch (int){
-		;//nothing pressed killswitch
+		; //nothing, pressed killswitch
 	}
 	catch(...){
-#if defined (WIN32)
-		sticky_keys(true);
-#endif
-		//Force visible mouse to end user. Somehow this sometimes doesn't happen
-#if SDL_VERSION_ATLEAST(2,0,0)
-		SDL_SetRelativeMouseMode(SDL_FALSE);
-#else
-		SDL_WM_GrabInput(SDL_GRAB_OFF);
-#endif
-		SDL_ShowCursor(SDL_ENABLE);
-		throw;//dunno what happened. rethrow for sdl to catch
+		; // Unknown error, let's just exit.
 	}
 #if defined (WIN32)
 	sticky_keys(true); //Might not be needed if the shutdown function switches to windowed mode, but it doesn't hurt
@@ -3054,8 +3206,8 @@ int main(int argc, char* argv[]) {
 #endif
 	SDL_ShowCursor(SDL_ENABLE);
 
-	SDL_Quit();//Let's hope sdl will quit as well when it catches an exception
-#ifdef ANDROID
+	SDL_Quit_Wrapper();//Let's hope sdl will quit as well when it catches an exception
+#ifdef __ANDROID__
 	exit(0); // Actually quits application... and hopefully(?) removes static values
 #endif
 	return 0;

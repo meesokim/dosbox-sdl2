@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -61,6 +61,7 @@
 #define BIOS_VDU_CONTROL                0x465
 #define BIOS_VDU_COLOR_REGISTER         0x466
 /* 0x467-0x468 is reserved */
+#define BIOS_LAST_UNEXPECTED_IRQ        0x46b
 #define BIOS_TIMER                      0x46c
 #define BIOS_24_HOURS_FLAG              0x470
 #define BIOS_KEYBOARD_FLAGS             0x471
@@ -103,6 +104,7 @@
 
 
 #define BIOS_DEFAULT_HANDLER_LOCATION	(RealMake(0xf000,0xff53))
+#define BIOS_DEFAULT_INT5_LOCATION		(RealMake(0xf000,0xff54))
 #define BIOS_DEFAULT_IRQ0_LOCATION		(RealMake(0xf000,0xfea5))
 #define BIOS_DEFAULT_IRQ1_LOCATION		(RealMake(0xf000,0xe987))
 #define BIOS_DEFAULT_IRQ2_LOCATION		(RealMake(0xf000,0xff55))

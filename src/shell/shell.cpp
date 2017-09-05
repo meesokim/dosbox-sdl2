@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -265,21 +265,21 @@ void DOS_Shell::ParseLine(char * line) {
 
 
 
-void DOS_Shell::RunInternal(void)
-{
+void DOS_Shell::RunInternal(void) {
 	char input_line[CMD_MAXLINE] = {0};
-	while(bf && bf->ReadLine(input_line)) 
-	{
+	while (bf) {
+		if (bf->ReadLine(input_line)) {
 		if (echo) {
 				if (input_line[0] != '@') {
 					ShowPrompt();
 					WriteOut_NoParsing(input_line);
 					WriteOut_NoParsing("\n");
-				};
-			};
+				}
+			}
 		ParseLine(input_line);
+			if (echo) WriteOut_NoParsing("\n");
+		}
 	}
-	return;
 }
 
 void DOS_Shell::Run(void) {
@@ -296,6 +296,7 @@ void DOS_Shell::Run(void) {
 		return;
 	}
 	/* Start a normal shell and check for a first command init */
+	if (cmd->FindString("/INIT",line,true)) {
 	WriteOut(MSG_Get("SHELL_STARTUP_BEGIN"),VERSION);
 #if C_DEBUG
 	WriteOut(MSG_Get("SHELL_STARTUP_DEBUG"));
@@ -304,10 +305,11 @@ void DOS_Shell::Run(void) {
 	if (machine == MCH_HERC) WriteOut(MSG_Get("SHELL_STARTUP_HERC"));
 	WriteOut(MSG_Get("SHELL_STARTUP_END"));
 
-	if (cmd->FindString("/INIT",line,true)) {
 		strcpy(input_line,line.c_str());
 		line.erase();
 		ParseLine(input_line);
+	} else {
+		WriteOut(MSG_Get("SHELL_STARTUP_SUB"),VERSION);
 	}
 	do {
 		if (bf){
@@ -377,38 +379,42 @@ public:
 		bool addexit = control->cmdline->FindExist("-exit",true);
 
 		/* Check for first command being a directory or file */
-		char buffer[CROSS_LEN];
-		char orig[CROSS_LEN];
+		char buffer[CROSS_LEN+1];
+		char orig[CROSS_LEN+1];
 		char cross_filesplit[2] = {CROSS_FILESPLIT , 0};
-		/* Combining -securemode and no parameter leaves you with a lovely Z:\. */ 
-		if ( !control->cmdline->FindCommand(1,line) ) { 
-			if ( secure ) autoexec[12].Install("z:\\config.com -securemode");
-		} else {
+
+		Bitu dummy = 1;
+		bool command_found = false;
+		while (control->cmdline->FindCommand(dummy++,line) && !command_found) {
 			struct stat test;
+			if (line.length() > CROSS_LEN) continue;
 			strcpy(buffer,line.c_str());
 			if (stat(buffer,&test)){
-				getcwd(buffer,CROSS_LEN);
+				if (getcwd(buffer,CROSS_LEN) == NULL) continue;
+				if (strlen(buffer) + line.length() + 1 > CROSS_LEN) continue;
 				strcat(buffer,cross_filesplit);
 				strcat(buffer,line.c_str());
-				if (stat(buffer,&test)) goto nomount;
+				if (stat(buffer,&test)) continue;
 			}
 			if (test.st_mode & S_IFDIR) { 
 				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
 				if(secure) autoexec[14].Install("z:\\config.com -securemode");
+				command_found = true;
 			} else {
 				char* name = strrchr(buffer,CROSS_FILESPLIT);
 				if (!name) { //Only a filename 
 					line = buffer;
-					getcwd(buffer,CROSS_LEN);
+					if (getcwd(buffer,CROSS_LEN) == NULL) continue;
+					if (strlen(buffer) + line.length() + 1 > CROSS_LEN) continue;
 					strcat(buffer,cross_filesplit);
 					strcat(buffer,line.c_str());
-					if(stat(buffer,&test)) goto nomount;
+					if(stat(buffer,&test)) continue;
 					name = strrchr(buffer,CROSS_FILESPLIT);
-					if(!name) goto nomount;
+					if(!name) continue;
 				}
 				*name++ = 0;
-				if (access(buffer,F_OK)) goto nomount;
+				if (access(buffer,F_OK)) continue;
 				autoexec[12].Install(std::string("MOUNT C \"") + buffer + "\"");
 				autoexec[13].Install("C:");
 				/* Save the non-modified filename (so boot and imgmount can use it (long filenames, case sensivitive)) */
@@ -435,9 +441,14 @@ public:
 					autoexec[15].Install(name);
 					if(addexit) autoexec[16].Install("exit");
 				}
+				command_found = true;
 			}
 		}
-nomount:
+
+		/* Combining -securemode, noautoexec and no parameters leaves you with a lovely Z:\. */
+		if ( !command_found ) {
+			if ( secure ) autoexec[12].Install("z:\\config.com -securemode");
+		}
 		VFILE_Register("AUTOEXEC.BAT",(Bit8u *)autoexec_data,(Bit32u)strlen(autoexec_data));
 	}
 };
@@ -446,6 +457,41 @@ static AUTOEXEC* test;
 
 void AUTOEXEC_Init(Section * sec) {
 	test = new AUTOEXEC(sec);
+}
+
+static Bitu INT2E_Handler(void) {
+	/* Save return address and current process */
+	RealPt save_ret=real_readd(SegValue(ss),reg_sp);
+	Bit16u save_psp=dos.psp();
+
+	/* Set first shell as process and copy command */
+	dos.psp(DOS_FIRST_SHELL);
+	DOS_PSP psp(DOS_FIRST_SHELL);
+	psp.SetCommandTail(RealMakeSeg(ds,reg_si));
+	SegSet16(ss,RealSeg(psp.GetStack()));
+	reg_sp=2046;
+
+	/* Read and fix up command string */
+	CommandTail tail;
+	MEM_BlockRead(PhysMake(dos.psp(),128),&tail,128);
+	if (tail.count<127) tail.buffer[tail.count]=0;
+	else tail.buffer[126]=0;
+	char* crlf=strpbrk(tail.buffer,"\r\n");
+	if (crlf) *crlf=0;
+
+	/* Execute command */
+	if (strlen(tail.buffer)) {
+		DOS_Shell temp;
+		temp.ParseLine(tail.buffer);
+		temp.RunInternal();
+	}
+
+	/* Restore process and "return" to caller */
+	dos.psp(save_psp);
+	SegSet16(cs,RealSeg(save_ret));
+	reg_ip=RealOff(save_ret);
+	reg_ax=0;
+	return CBRET_NONE;
 }
 
 static char const * const path_string="PATH=Z:\\";
@@ -462,7 +508,7 @@ void SHELL_Init() {
 	MSG_Add("SHELL_ILLEGAL_SWITCH","Illegal switch: %s.\n");
 	MSG_Add("SHELL_MISSING_PARAMETER","Required parameter missing.\n");
 	MSG_Add("SHELL_CMD_CHDIR_ERROR","Unable to change to: %s.\n");
-	MSG_Add("SHELL_CMD_CHDIR_HINT","To change to different drive type \033[31m%c:\033[0m\n");
+	MSG_Add("SHELL_CMD_CHDIR_HINT","Hint: To change to different drive type \033[31m%c:\033[0m\n");
 	MSG_Add("SHELL_CMD_CHDIR_HINT_2","directoryname is longer than 8 characters and/or contains spaces.\nTry \033[31mcd %s\033[0m\n");
 	MSG_Add("SHELL_CMD_CHDIR_HINT_3","You are still on drive Z:, change to a mounted drive with \033[31mC:\033[0m.\n");
 	MSG_Add("SHELL_CMD_DATE_HELP","Displays or changes the internal date.\n");
@@ -542,6 +588,7 @@ void SHELL_Init() {
 	        "\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xCD\xBC\033[0m\n"
 	        //"\n" //Breaks the startup message if you type a mount and a drive change.
 	);
+	MSG_Add("SHELL_STARTUP_SUB","\n\n\033[32;1mDOSBox %s Command Shell\033[0m\n\n");
 	MSG_Add("SHELL_CMD_CHDIR_HELP","Displays/changes the current directory.\n");
 	MSG_Add("SHELL_CMD_CHDIR_HELP_LONG","CHDIR [drive:][path]\n"
 	        "CHDIR [..]\n"
@@ -615,6 +662,12 @@ void SHELL_Init() {
 	/* Set up int 23 to "int 20" in the psp. Fixes what.exe */
 	real_writed(0,0x23*4,((Bit32u)psp_seg<<16));
 
+	/* Set up int 2e handler */
+	Bitu call_int2e=CALLBACK_Allocate();
+	RealPt addr_int2e=RealMake(psp_seg+16+1,8);
+	CALLBACK_Setup(call_int2e,&INT2E_Handler,CB_IRET_STI,Real2Phys(addr_int2e),"Shell Int 2e");
+	RealSetVec(0x2e,addr_int2e);
+
 	/* Setup MCBs */
 	DOS_MCB pspmcb((Bit16u)(psp_seg-1));
 	pspmcb.SetPSPSeg(psp_seg);	// MCB of the command shell psp
@@ -651,7 +704,7 @@ void SHELL_Init() {
 	DOS_ForceDuplicateEntry(1,0);				/* "new" STDIN */
 	DOS_ForceDuplicateEntry(1,2);				/* STDERR */
 	DOS_OpenFile("CON",OPEN_READWRITE,&dummy);	/* STDAUX */
-	DOS_OpenFile("CON",OPEN_READWRITE,&dummy);	/* STDPRN */
+	DOS_OpenFile("PRN",OPEN_READWRITE,&dummy);	/* STDPRN */
 
 	psp.SetParent(psp_seg);
 	/* Set the environment */
@@ -659,6 +712,7 @@ void SHELL_Init() {
 	/* Set the command line for the shell start up */
 	CommandTail tail;
 	tail.count=(Bit8u)strlen(init_line);
+	memset(&tail.buffer,0,127);
 	strcpy(tail.buffer,init_line);
 	MEM_BlockWrite(PhysMake(psp_seg,128),&tail,128);
 	

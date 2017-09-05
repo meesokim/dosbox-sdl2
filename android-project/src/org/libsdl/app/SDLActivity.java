@@ -57,6 +57,7 @@ public class SDLActivity extends Activity {
     protected static View mTextEdit;
     protected static ViewGroup mLayout;
     protected static SDLJoystickHandler mJoystickHandler;
+	protected static boolean mKeyboard;
 
     // This is what SDL runs in. It invokes SDL_main(), eventually
     protected static Thread mSDLThread;
@@ -218,7 +219,9 @@ public class SDLActivity extends Activity {
 	
 	public void onConfigurationChanged(Configuration newConfig){
 	    super.onConfigurationChanged(newConfig);
-
+		if ((newConfig.keyboardHidden & (Configuration.HARDKEYBOARDHIDDEN_NO | Configuration.HARDKEYBOARDHIDDEN_YES))!=0) {
+			SDLActivity.mKeyboard = true;
+		}
 	}	
 
     @Override
@@ -330,8 +333,9 @@ public class SDLActivity extends Activity {
      *  to 'true' during the call to onPause (in a usual scenario).
      */
     public static void handlePause() {
-        if (!SDLActivity.mIsPaused && SDLActivity.mIsSurfaceReady) {
+        if (!SDLActivity.mKeyboard && !SDLActivity.mIsPaused && SDLActivity.mIsSurfaceReady) {
             SDLActivity.mIsPaused = true;
+			SDLActivity.mKeyboard = false;
             SDLActivity.nativePause();
             mSurface.handlePause();
         }

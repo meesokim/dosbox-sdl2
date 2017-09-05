@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2017  The DOSBox Team
+ *  Copyright (C) 2002-2011  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -15,8 +15,10 @@
  *  along with this program; if not, write to the Free Software
  *  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
  */
-
-
+#ifdef HAVE_NEON
+#include <arm_neon.h>
+#include "math_neon.h"
+#endif
 
 static void FPU_FINIT(void) {
 	FPU_SetCW(0x37F);
@@ -41,22 +43,21 @@ static void FPU_FNOP(void){
 	return;
 }
 
-static void FPU_PREP_PUSH(void){
-	TOP = (TOP - 1) &7;
-	if (GCC_UNLIKELY(fpu.tags[TOP] != TAG_Empty)) E_Exit("FPU stack overflow");
-	fpu.tags[TOP] = TAG_Valid;
-}
-
 static void FPU_PUSH(double in){
-	FPU_PREP_PUSH();
+	TOP = (TOP - 1) &7;
+	//actually check if empty
+	fpu.tags[TOP] = TAG_Valid;
 	fpu.regs[TOP].d = in;
 //	LOG(LOG_FPU,LOG_ERROR)("Pushed at %d  %g to the stack",newtop,in);
 	return;
 }
 
+static void FPU_PREP_PUSH(void){
+	TOP = (TOP - 1) &7;
+	fpu.tags[TOP] = TAG_Valid;
+}
 
 static void FPU_FPOP(void){
-	if (GCC_UNLIKELY(fpu.tags[TOP] == TAG_Empty)) E_Exit("FPU stack underflow");
 	fpu.tags[TOP]=TAG_Empty;
 	//maybe set zero in it as well
 	TOP = ((TOP+1)&7);
@@ -89,54 +90,72 @@ static double FROUND(double in){
 #define BIAS80 16383
 #define BIAS64 1023
 
+
+
 static Real64 FPU_FLD80(PhysPt addr) {
-	struct {
-		Bit16s begin;
-		FPU_Reg eind;
-	} test;
-	test.eind.l.lower = mem_readd(addr);
-	test.eind.l.upper = mem_readd(addr+4);
-	test.begin = mem_readw(addr+8);
-   
-	Bit64s exp64 = (((test.begin&0x7fff) - BIAS80));
-	Bit64s blah = ((exp64 >0)?exp64:-exp64)&0x3ff;
-	Bit64s exp64final = ((exp64 >0)?blah:-blah) +BIAS64;
+//TODO
+		struct {
+			Bit16s begin;
+			FPU_Reg eind;
+		} test;
+		test.eind.l.lower = mem_readd(addr);
+		test.eind.l.upper = mem_readd(addr+4);
+		test.begin = mem_readw(addr+8);
 
-	Bit64s mant64 = (test.eind.ll >> 11) & LONGTYPE(0xfffffffffffff);
-	Bit64s sign = (test.begin&0x8000)?1:0;
-	FPU_Reg result;
-	result.ll = (sign <<63)|(exp64final << 52)| mant64;
+		int64x1_t test_begin=vmov_n_s64((test.begin&0x7fff));
+		int64x1_t exp64=vsub_s64(test_begin,vmov_n_s64(BIAS80));
 
-	if(test.eind.l.lower == 0 && test.eind.l.upper == 0x80000000 && (test.begin&0x7fff) == 0x7fff) {
-		//Detect INF and -INF (score 3.11 when drawing a slur.)
-		result.d = sign?-HUGE_VAL:HUGE_VAL;
-	}
-	return result.d;
+		int64x1_t exp64pos=vmov_n_s64(abs(vget_lane_s64(exp64,0)));
+		int64x1_t blah =vand_s64(exp64pos,vmov_n_s64(0x3ff));
 
-	//mant64= test.mant80/2***64    * 2 **53 
+		int64x1_t exp64final = vmov_n_s64(abs(vget_lane_s64(blah,0)));
+		exp64final=vadd_s64(exp64final,vmov_n_s64(BIAS64));
+		int64x1_t sign=  (test.begin&0x8000)?vmov_n_s64(0x1):vmov_n_s64(0);
+
+		int64x1_t mant64 = vmov_n_s64(test.eind.ll);
+		mant64 = vand_s64(vshr_n_s64(mant64,11),vmov_n_s64(0xfffffffffffff));
+
+		int64x1_t rst=vshl_n_s64(sign,63);
+		rst =vorr_s64(rst,vshl_n_s64(exp64final,52));
+		rst =vorr_s64(rst,mant64);
+
+		FPU_Reg result;
+		result.ll = vget_lane_s64(rst,0);
+		if(test.eind.l.lower == 0 && test.eind.l.upper == 0x80000000 && (test.begin&0x7fff) == 0x7fff) {
+			//Detect INF and -INF (score 3.11 when drawing a slur.)
+			result.d = sign?-HUGE_VAL:HUGE_VAL;
+		}
+		return result.d;
 }
 
+
+
+
 static void FPU_ST80(PhysPt addr,Bitu reg) {
-	struct {
-		Bit16s begin;
-		FPU_Reg eind;
-	} test;
-	Bit64s sign80 = (fpu.regs[reg].ll&LONGTYPE(0x8000000000000000))?1:0;
-	Bit64s exp80 =  fpu.regs[reg].ll&LONGTYPE(0x7ff0000000000000);
-	Bit64s exp80final = (exp80>>52);
-	Bit64s mant80 = fpu.regs[reg].ll&LONGTYPE(0x000fffffffffffff);
-	Bit64s mant80final = (mant80 << 11);
-	if(fpu.regs[reg].d != 0){ //Zero is a special case
-		// Elvira wants the 8 and tcalc doesn't
-		mant80final |= LONGTYPE(0x8000000000000000);
-		//Ca-cyber doesn't like this when result is zero.
-		exp80final += (BIAS80 - BIAS64);
+	int64x1_t fpu_reg=vld1_s64(& fpu.regs[reg].ll);
+	int64x1_t sign80= vand_s64(fpu_reg,vmov_n_s64(0x8000000000000000));
+	//sign80=  (vget_lane_s64(sign80,0))?vmov_n_s64(0x1):sign80;
+	sign80=  (vget_lane_s64(sign80,0))?vmov_n_s64(0x1):vmov_n_s64(0);
+	int64x1_t exp80 =  vand_s64(fpu_reg,vmov_n_s64(0x7ff0000000000000));
+	int64x1_t exp80final = vshr_n_s64(exp80,52);
+	int64x1_t mant80 = vand_s64(fpu_reg,vmov_n_s64(0x000fffffffffffff));
+	int64x1_t mant80final = vshl_n_s64(mant80,11);
+	if(fpu.regs[reg].d != 0){
+		mant80final  =  vorr_s64(mant80final, 0x8000000000000000);
+		exp80final = vadd_s64(mant80final,vmov_n_s64(BIAS80));
+		exp80final = vsub_s64(mant80final,vmov_n_s64(BIAS64));
 	}
-	test.begin = (static_cast<Bit16s>(sign80)<<15)| static_cast<Bit16s>(exp80final);
-	test.eind.ll = mant80final;
-	mem_writed(addr,test.eind.l.lower);
-	mem_writed(addr+4,test.eind.l.upper);
-	mem_writew(addr+8,test.begin);
+
+	//Bit16s begin = (static_cast<Bit16s>(sign80)<<15)| static_cast<Bit16s>(exp80final);
+	int64x1_t begin_vr=(vorr_s64(vshl_n_s64(sign80,15),exp80final));
+	Bit16s begin = static_cast<Bit16s>(vget_lane_s64(begin_vr,0));
+
+	FPU_Reg eind;
+	eind.ll = vget_lane_s64(mant80final,0);
+
+	mem_writed(addr,eind.l.lower);
+	mem_writed(addr+4,eind.l.upper);
+	mem_writew(addr+8,begin);
 }
 
 
@@ -280,7 +299,15 @@ static void FPU_FADD(Bitu op1, Bitu op2){
 }
 
 static void FPU_FSIN(void){
-	fpu.regs[TOP].d = sin(fpu.regs[TOP].d);
+	//single precision
+	if((fpu.cw & 0x300) == 0)
+	{
+		fpu.regs[TOP].d = sinf_neon((float)fpu.regs[TOP].d);
+	}
+	else
+	{
+		fpu.regs[TOP].d = sin(fpu.regs[TOP].d);
+	}
 	FPU_SET_C2(0);
 	//flags and such :)
 	return;
@@ -288,33 +315,70 @@ static void FPU_FSIN(void){
 
 static void FPU_FSINCOS(void){
 	Real64 temp = fpu.regs[TOP].d;
-	fpu.regs[TOP].d = sin(temp);
-	FPU_PUSH(cos(temp));
+	//single precision
+	if((fpu.cw & 0x300) == 0)
+	{
+		fpu.regs[TOP].d = sinf_neon((float)temp);
+		FPU_PUSH(cosf_neon((float)temp));
+	}
+	else
+	{
+		fpu.regs[TOP].d = sin(temp);
+		FPU_PUSH(cos(temp));
+	}
 	FPU_SET_C2(0);
 	//flags and such :)
 	return;
 }
 
 static void FPU_FCOS(void){
-	fpu.regs[TOP].d = cos(fpu.regs[TOP].d);
+	//single precision
+	if((fpu.cw & 0x300) == 0)
+	{
+		fpu.regs[TOP].d = cosf_neon((float)fpu.regs[TOP].d);
+	}
+	else
+	{
+		fpu.regs[TOP].d = cos(fpu.regs[TOP].d);
+	}
 	FPU_SET_C2(0);
 	//flags and such :)
 	return;
 }
 
 static void FPU_FSQRT(void){
-	fpu.regs[TOP].d = sqrt(fpu.regs[TOP].d);
+	//single precision
+	if((fpu.cw & 0x300) == 0)
+	{
+		fpu.regs[TOP].d = sqrtf_neon((float)fpu.regs[TOP].d);
+	}
+	else
+	{
+		fpu.regs[TOP].d = sqrt(fpu.regs[TOP].d);
+	}
 	//flags and such :)
 	return;
 }
 static void FPU_FPATAN(void){
-	fpu.regs[STV(1)].d = atan2(fpu.regs[STV(1)].d,fpu.regs[TOP].d);
+	//single precision
+	if((fpu.cw & 0x300) == 0)
+	{
+		fpu.regs[STV(1)].d = atan2f_neon((float)fpu.regs[STV(1)].d,(float)fpu.regs[TOP].d);
+	}else{
+		fpu.regs[STV(1)].d = atan2(fpu.regs[STV(1)].d,fpu.regs[TOP].d);
+	}
 	FPU_FPOP();
 	//flags and such :)
 	return;
 }
 static void FPU_FPTAN(void){
-	fpu.regs[TOP].d = tan(fpu.regs[TOP].d);
+	//single precision
+	if((fpu.cw & 0x300) == 0)
+	{
+		fpu.regs[TOP].d = tanf_neon((float)fpu.regs[TOP].d);
+	}else{
+		fpu.regs[TOP].d = tan(fpu.regs[TOP].d);
+	}
 	FPU_PUSH(1.0);
 	FPU_SET_C2(0);
 	//flags and such :)
@@ -451,13 +515,13 @@ static void FPU_F2XM1(void){
 }
 
 static void FPU_FYL2X(void){
-	fpu.regs[STV(1)].d*=log(fpu.regs[TOP].d)/log(static_cast<Real64>(2.0));
+	fpu.regs[STV(1)].d*=log(fpu.regs[TOP].d)/logf(static_cast<Real64>(2.0));
 	FPU_FPOP();
 	return;
 }
 
 static void FPU_FYL2XP1(void){
-	fpu.regs[STV(1)].d*=log(fpu.regs[TOP].d+1.0)/log(static_cast<Real64>(2.0));
+	fpu.regs[STV(1)].d*=log(fpu.regs[TOP].d+1.0)/logf(static_cast<Real64>(2.0));
 	FPU_FPOP();
 	return;
 }
@@ -524,8 +588,15 @@ static void FPU_FXTRACT(void) {
 	// if double ever uses a different base please correct this function
 
 	FPU_Reg test = fpu.regs[TOP];
-	Bit64s exp80 =  test.ll&LONGTYPE(0x7ff0000000000000);
-	Bit64s exp80final = (exp80>>52) - BIAS64;
+	//Bit64s exp80 =  test.ll&LONGTYPE(0x7ff0000000000000);
+	//Bit64s exp80final = (exp80>>52) - BIAS64;
+
+	int64x1_t exp80final_v=vld1_s64(&test.ll);
+	exp80final_v=vand_s64(exp80final_v,vmov_n_s64(0x7ff0000000000000));
+	exp80final_v=vshr_n_s64(exp80final_v,52);
+	exp80final_v=vsub_s64(exp80final_v,vmov_n_s64(BIAS64));
+	Bit64s exp80final=vget_lane_s64(exp80final_v,0);
+
 	Real64 mant = test.d / (pow(2.0,static_cast<Real64>(exp80final)));
 	fpu.regs[TOP].d = static_cast<Real64>(exp80final);
 	FPU_PUSH(mant);

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -48,6 +48,8 @@ static void FPU_FFREE(Bitu st) {
 
 #if C_FPU_X86
 #include "../../fpu/fpu_instructions_x86.h"
+#elif HAVE_NEON
+#include "../../fpu/fpu_instructions_neon.h"
 #else
 #include "../../fpu/fpu_instructions.h"
 #endif
@@ -534,7 +536,7 @@ static void dyn_fpu_esc5(){
 			gen_mov_word_to_reg(FC_OP1,(void*)(&TOP),true);
 			gen_call_function_R((void*)&FPU_SET_TOP,FC_OP1);
 			dyn_fill_ea(FC_OP1); 
-			gen_mov_word_to_reg(FC_OP2,(void*)(&fpu.sw),true);
+			gen_mov_word_to_reg(FC_OP2,(void*)(&fpu.sw),false);
 			gen_call_function_RR((void*)&mem_writew,FC_OP1,FC_OP2);
 			break;
 		default:

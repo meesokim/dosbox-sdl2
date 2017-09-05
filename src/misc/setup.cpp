@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -243,15 +243,50 @@ char const* Property::Get_help() {
 	return MSG_Get(result.c_str());
 }
 
+bool Prop_int::SetVal(Value const& in, bool forced, bool warn) {
+	if (forced) {
+		value = in;
+		return true;
+	} else if (!suggested_values.empty()){
+		if ( CheckValue(in,warn) ) {
+			value = in;
+			return true;
+		} else {
+			value = default_value;
+			return false;
+		}
+	} else {
+		//Handle ranges if specified
+		int mi = min;
+		int ma = max;
+		int va = static_cast<int>(Value(in));
+		
+		//No ranges
+		if (mi == -1 && ma == -1) { value = in; return true;}
 
+		//Inside range
+		if (va >= mi && va <= ma) { value = in; return true;}
+
+		//Outside range, set it to the closest boundary
+		if (va > ma ) va = ma; else va = mi;
+
+		if (warn) LOG_MSG("%s is outside the allowed range %s-%s for variable: %s.\nIt has been set to the closest boundary: %d.",in.ToString().c_str(),min.ToString().c_str(),max.ToString().c_str(),propname.c_str(),va);
+	
+		value = va; 
+		return true;
+		}
+}
 bool Prop_int::CheckValue(Value const& in, bool warn) {
-	if(suggested_values.empty() && Property::CheckValue(in,warn)) return true;
+//	if(!suggested_values.empty() && Property::CheckValue(in,warn)) return true;
+	if(!suggested_values.empty()) return Property::CheckValue(in,warn);
+	LOG_MSG("still used ?");
 	//No >= and <= in Value type and == is ambigious
 	int mi = min;
 	int ma = max;
 	int va = static_cast<int>(Value(in));
 	if(mi == -1 && ma == -1) return true;
 	if (va >= mi && va <= ma) return true;
+	
 	if(warn) LOG_MSG("%s lies outside the range %s-%s for variable: %s.\nIt might now be reset to the default value: %s",in.ToString().c_str(),min.ToString().c_str(),max.ToString().c_str(),propname.c_str(),default_value.ToString().c_str());
 	return false;
 }
@@ -337,7 +372,7 @@ void Prop_multival::make_default_value(){
 	while( (p = section->Get_prop(i++)) ) {
 		std::string props = p->Get_Default_Value().ToString();
 		if(props == "") continue;
-		result += seperator; result += props;
+		result += separator; result += props;
 	}
 	Value val(result,Value::V_STRING);
 	SetVal(val,false,true);
@@ -361,14 +396,14 @@ bool Prop_multival_remain::SetValue(std::string const& input) {
 	
 	string::size_type loc = string::npos;
 	while( (p = section->Get_prop(i++)) ) {
-		//trim leading seperators
-		loc = local.find_first_not_of(seperator);
+		//trim leading separators
+		loc = local.find_first_not_of(separator);
 		if(loc != string::npos) local.erase(0,loc);
-		loc = local.find_first_of(seperator);
+		loc = local.find_first_of(separator);
 		string in = "";//default value
 		/* when i == number_of_properties add the total line. (makes more then 
 		 * one string argument possible for parameters of cpu) */
-		if(loc != string::npos && i < number_of_properties) { //seperator found 
+		if(loc != string::npos && i < number_of_properties) { //separator found 
 			in = local.substr(0,loc);
 			local.erase(0,loc+1);
 		} else if(local.size()) { //last argument or last property
@@ -398,12 +433,12 @@ bool Prop_multival::SetValue(std::string const& input) {
 	if(!p) return false;
 	string::size_type loc = string::npos;
 	while( (p = section->Get_prop(i++)) ) {
-		//trim leading seperators
-		loc = local.find_first_not_of(seperator);
+		//trim leading separators
+		loc = local.find_first_not_of(separator);
 		if(loc != string::npos) local.erase(0,loc);
-		loc = local.find_first_of(seperator);
+		loc = local.find_first_of(separator);
 		string in = "";//default value
-		if(loc != string::npos) { //seperator found
+		if(loc != string::npos) { //separator found
 			in = local.substr(0,loc);
 			local.erase(0,loc+1);
 		} else if(local.size()) { //last argument
@@ -579,13 +614,20 @@ void trim(string& in) {
 	if(loc != string::npos) in.erase(loc+1);
 }
 
-//TODO double c_str
 bool Section_prop::HandleInputline(string const& gegevens){
 	string str1 = gegevens;
 	string::size_type loc = str1.find('=');
 	if(loc == string::npos) return false;
 	string name = str1.substr(0,loc);
 	string val = str1.substr(loc + 1);
+
+	/* Remove quotes around value */
+	trim(val);
+	string::size_type length = val.length();
+	if (length > 1 &&
+	     ((val[0] == '"'  && val[length - 1] == '"' ) ||
+	      (val[0] == '\'' && val[length - 1] == '\''))
+	   ) val = val.substr(1,length - 2); 
 	/* trim the results incase there were spaces somewhere */
 	trim(name);trim(val);
 	for(it tel=properties.begin();tel!=properties.end();tel++){
@@ -603,7 +645,6 @@ void Section_prop::PrintData(FILE* outfile) const {
 	}
 }
 
-//TODO geen noodzaak voor 2 keer c_str
 string Section_prop::GetPropValue(string const& _property) const{
 	for(const_it tel=properties.begin();tel!=properties.end();tel++){
 		if(!strcasecmp((*tel)->propname.c_str(),_property.c_str())){
@@ -632,16 +673,16 @@ bool Config::PrintConfig(char const * const configfilename) const {
 	FILE* outfile=fopen(configfilename,"w+t");
 	if(outfile==NULL) return false;
 
-	/* Print start of configfile and add an return to improve readibility. */
+	/* Print start of configfile and add a return to improve readibility. */
 	fprintf(outfile,MSG_Get("CONFIGFILE_INTRO"),VERSION);
 	fprintf(outfile,"\n");
 	for (const_it tel=sectionlist.begin(); tel!=sectionlist.end(); tel++){
 		/* Print out the Section header */
-		Section_prop *sec = dynamic_cast<Section_prop *>(*tel);
 		strcpy(temp,(*tel)->GetName());
 		lowcase(temp);
 		fprintf(outfile,"[%s]\n",temp);
 
+		Section_prop *sec = dynamic_cast<Section_prop *>(*tel);
 		if (sec) {
 			Property *p;
 			size_t i = 0, maxwidth = 0;
@@ -771,7 +812,7 @@ Section* Config::GetSection(int index){
 	}
 	return NULL;
 }
-//c_str() 2x
+
 Section* Config::GetSection(string const& _sectionname) const{
 	for (const_it tel=sectionlist.begin(); tel!=sectionlist.end(); tel++){
 		if (!strcasecmp((*tel)->GetName(),_sectionname.c_str())) return (*tel);
@@ -806,13 +847,12 @@ bool Config::ParseConfigFile(char const * const configfilename){
 	string gegevens;
 	Section* currentsection = NULL;
 	Section* testsec = NULL;
-//	int cnt = 0;
 	while (getline(in,gegevens)) {
 		
 		/* strip leading/trailing whitespace */
 		trim(gegevens);
 		if(!gegevens.size()) continue;
-//		LOG_MSG("CONFIG:%d. %s", ++cnt, gegevens.c_str());
+
 		switch(gegevens[0]){
 		case '%':
 		case '\0':

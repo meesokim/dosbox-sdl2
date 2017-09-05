@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -274,7 +274,7 @@ static INLINE void DSP_FlushData(void) {
 }
 
 static void DSP_DMA_CallBack(DmaChannel * chan, DMAEvent event) {
-	if (event==DMA_REACHED_TC) return;
+	if (chan!=sb.dma.chan || event==DMA_REACHED_TC) return;
 	else if (event==DMA_MASKED) {
 		if (sb.mode==MODE_DMA) {
 			GenerateDMASound(sb.dma.min);
@@ -699,6 +699,7 @@ static void DSP_Reset(void) {
 
 	DSP_ChangeMode(MODE_NONE);
 	DSP_FlushData();
+	sb.dsp.cmd=DSP_NO_COMMAND;
 	sb.dsp.cmd_len=0;
 	sb.dsp.in.pos=0;
 	sb.dsp.write_busy=0;
@@ -756,6 +757,16 @@ static void DSP_ADC_CallBack(DmaChannel * /*chan*/, DMAEvent event) {
 	}
 	SB_RaiseIRQ(SB_IRQ_8);
 	ch->Register_Callback(0);
+}
+
+static void DSP_ChangeRate(Bitu freq) {
+	if (sb.freq!=freq && sb.dma.mode!=DSP_DMA_NONE) {
+		sb.chan->FillUp();
+		sb.chan->SetFreq(freq / (sb.mixer.stereo ? 2 : 1));
+		sb.dma.rate=(freq*sb.dma.mul) >> SB_SH;
+		sb.dma.min=(sb.dma.rate*3)/1000;
+	}
+	sb.freq=freq;
 }
 
 Bitu DEBUG_EnableDebugger(void);
@@ -845,16 +856,13 @@ static void DSP_DoCommand(void) {
 		if (sb.midi == true) MIDI_RawOutByte(sb.dsp.in.data[0]);
 		break;
 	case 0x40:	/* Set Timeconstant */
-		sb.freq=(1000000 / (256 - sb.dsp.in.data[0]));
-		/* Nasty kind of hack to allow runtime changing of frequency */
-		if (sb.dma.mode != DSP_DMA_NONE && sb.dma.autoinit) {
-			DSP_PrepareDMA_Old(sb.dma.mode,sb.dma.autoinit,sb.dma.sign);
-		}
+		DSP_ChangeRate(1000000 / (256 - sb.dsp.in.data[0]));
 		break;
 	case 0x41:	/* Set Output Samplerate */
 	case 0x42:	/* Set Input Samplerate */
+		/* Note: 0x42 is handled like 0x41, needed by Fasttracker II */
 		DSP_SB16_ONLY;
-		sb.freq=(sb.dsp.in.data[0] << 8)  | sb.dsp.in.data[1];
+		DSP_ChangeRate((sb.dsp.in.data[0] << 8) | sb.dsp.in.data[1]);
 		break;
 	case 0x48:	/* Set DMA Block Size */
 		DSP_SB2_ABOVE;
@@ -984,7 +992,8 @@ static void DSP_DoCommand(void) {
 		DSP_AddData(sb.dsp.test_register);;
 		break;
 	case 0xf2:	/* Trigger 8bit IRQ */
-		SB_RaiseIRQ(SB_IRQ_8);
+		//Small delay in order to emulate the slowness of the DSP, fixes Llamatron 2012 and Lemmings 3D
+		PIC_AddEvent(&DSP_RaiseIRQEvent,0.01f); 
 		break;
 	case 0xf3:   /* Trigger 16bit IRQ */
 		DSP_SB16_ONLY; 
@@ -1089,21 +1098,33 @@ static Bit8u DSP_ReadData(void) {
 	return sb.dsp.out.lastval;
 }
 
-//The soundblaster manual says 2.0 Db steps but we'll go for a bit less
-#define CALCVOL(_VAL) (float)pow(10.0f,((float)(31-_VAL)*-1.3f)/20)
+static float calc_vol(Bit8u amount) {
+	Bit8u count = 31 - amount;
+	float db = static_cast<float>(count);
+	if (sb.type == SBT_PRO1 || sb.type == SBT_PRO2) {
+		if (count) {
+			if (count < 16) db -= 1.0f;
+			else if (count > 16) db += 1.0f;
+			if (count == 24) db += 2.0f;
+			if (count > 27) return 0.0f; //turn it off.
+		}
+	} else { //Give the rest, the SB16 scale, as we don't have data.
+		db *= 2.0f;
+		if (count > 20) db -= 1.0f;
+	}
+	return (float) pow (10.0f,-0.05f * db);
+}
 static void CTMIXER_UpdateVolumes(void) {
 	if (!sb.mixer.enabled) return;
 	MixerChannel * chan;
-	//adjust to get linear master volume slider in trackers
+	float m0 = calc_vol(sb.mixer.master[0]);
+	float m1 = calc_vol(sb.mixer.master[1]);
 	chan=MIXER_FindChannel("SB");
-	if (chan) chan->SetVolume(float(sb.mixer.master[0])/31.0f*CALCVOL(sb.mixer.dac[0]),
-							  float(sb.mixer.master[1])/31.0f*CALCVOL(sb.mixer.dac[1]));
+	if (chan) chan->SetVolume(m0 * calc_vol(sb.mixer.dac[0]), m1 * calc_vol(sb.mixer.dac[1]));
 	chan=MIXER_FindChannel("FM");
-	if (chan) chan->SetVolume(float(sb.mixer.master[0])/31.0f*CALCVOL(sb.mixer.fm[0]),
-							  float(sb.mixer.master[1])/31.0f*CALCVOL(sb.mixer.fm[1]));
+	if (chan) chan->SetVolume(m0 * calc_vol(sb.mixer.fm[0]) , m1 * calc_vol(sb.mixer.fm[1]) );
 	chan=MIXER_FindChannel("CDAUDIO");
-	if (chan) chan->SetVolume(float(sb.mixer.master[0])/31.0f*CALCVOL(sb.mixer.cda[0]),
-							  float(sb.mixer.master[1])/31.0f*CALCVOL(sb.mixer.cda[1]));
+	if (chan) chan->SetVolume(m0 * calc_vol(sb.mixer.cda[0]), m1 * calc_vol(sb.mixer.cda[1]));
 }
 
 static void CTMIXER_Reset(void) {
@@ -1123,7 +1144,8 @@ static void CTMIXER_Reset(void) {
 	_WHICH_[1]=   ((((_VAL_) & 0x0f) << 1)|(sb.type==SBT_16 ? 1:3));	\
 
 #define MAKEPROVOL(_WHICH_)			\
-	((((_WHICH_[0] & 0x1e) << 3) | ((_WHICH_[1] & 0x1e) >> 1)) & (sb.type==SBT_16 ? 0xff:0xee))
+	((((_WHICH_[0] & 0x1e) << 3) | ((_WHICH_[1] & 0x1e) >> 1)) |	\
+		((sb.type==SBT_PRO1 || sb.type==SBT_PRO2) ? 0x11:0))
 
 static void DSP_ChangeStereo(bool stereo) {
 	if (!sb.dma.stereo && stereo) {
@@ -1523,6 +1545,7 @@ private:
 		else if (!strcasecmp(omode,"opl2")) opl_mode=OPL_opl2;
 		else if (!strcasecmp(omode,"dualopl2")) opl_mode=OPL_dualopl2;
 		else if (!strcasecmp(omode,"opl3")) opl_mode=OPL_opl3;
+		else if (!strcasecmp(omode,"opl3gold")) opl_mode=OPL_opl3gold;
 		/* Else assume auto */
 		else {
 			switch (type) {
@@ -1578,6 +1601,7 @@ public:
 			// fall-through
 		case OPL_dualopl2:
 		case OPL_opl3:
+		case OPL_opl3gold:
 			OPL_Init(section,oplmode);
 			break;
 		}
@@ -1635,6 +1659,7 @@ public:
 			// fall-through
 		case OPL_dualopl2:
 		case OPL_opl3:
+		case OPL_opl3gold:
 			OPL_ShutDown(m_configuration);
 			break;
 		}

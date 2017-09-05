@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2002-2013  The DOSBox Team
+ *  Copyright (C) 2002-2017  The DOSBox Team
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -24,6 +24,11 @@
 #include "vga.h"
 
 #include <string.h>
+
+#ifdef HAVE_NEON
+#include <arm_neon.h>
+#endif
+
 
 VGA_Type vga;
 SVGA_Driver svga;
@@ -241,7 +246,11 @@ void VGA_Init(Section* sec) {
 }
 
 void SVGA_Setup_Driver(void) {
+#if NEON_MEMORY
+		memset_neon(&svga, 0, sizeof(SVGA_Driver));
+#else
 	memset(&svga, 0, sizeof(SVGA_Driver));
+#endif
 
 	switch(svgaCard) {
 	case SVGA_S3Trio:

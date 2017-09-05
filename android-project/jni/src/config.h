@@ -31,9 +31,11 @@
 #define C_ATTRIBUTE_ALWAYS_INLINE 1
 
 /* Determines if the compilers supports fastcall attribute. */
+#define C_ATTRIBUTE_FASTCALL 1
 /* #undef C_ATTRIBUTE_FASTCALL */
 
 /* Define to 1 to use inlined memory functions in cpu core */
+#define C_CORE_INLINE 1
 /* #undef C_CORE_INLINE */
 
 /* Define to 1 to enable internal debugger, requires libcurses */
@@ -67,6 +69,10 @@
 
 /* Define to 1 if you have the mprotect function */
 #define C_HAVE_MPROTECT 1
+
+// Uncomment if your Android device supports NEON
+/* Enable NEON Performance Optimizations */
+//#define HAVE_NEON 1
 
 /* Define to 1 to enable heavy debugging, also have to enable C_DEBUG */
 /* #undef C_HEAVY_DEBUG */
