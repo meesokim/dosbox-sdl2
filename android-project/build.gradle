@@ -50,7 +50,7 @@ android {
     sourceSets.main {
 		manifest.srcFile android.gameTitle+'/AndroidManifest.xml'
 		jniLibs.srcDirs =['libs']
-		java.srcDirs = [android.gameTitle+'/src']
+		java.srcDirs = [android.gameTitle+'/src', 'src_sdl']
 		res.srcDirs = [android.gameTitle+'/res']
 		assets.srcDirs = [android.gameTitle+'/assets']
     }

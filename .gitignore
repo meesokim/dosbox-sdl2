@@ -7,6 +7,13 @@
 *.rej
 *.obj
 *.bak
+*.so
+*.log
+*.o
+*.o.d
 .DS_Store
 
 android-project/build
+android-project/obj
+android-project/.gradle
+android-project/libs

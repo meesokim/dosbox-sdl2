@@ -88,7 +88,17 @@ typedef Bit8u HostReg;
 
 
 static void cache_block_closing(Bit8u* block_start,Bitu block_size) {
-#if (__ARM_EABI__)
+#if (C_TARGETCPU == ARMV8LE)
+	//flush cache - eabi
+	register unsigned long _beg __asm ("x1") = (unsigned long)(block_start);				// block start
+	register unsigned long _end __asm ("x2") = (unsigned long)(block_start+block_size);		// block end
+	register unsigned long _flg __asm ("x3") = 0;
+	register unsigned long _par __asm ("x7") = 0xf0002;										// sys_cacheflush
+	__asm __volatile ("swi 0x0"
+		: // no outputs
+		: "r" (_beg), "r" (_end), "r" (_flg), "r" (_par)
+		);
+#elif (__ARM_EABI__)
 	//flush cache - eabi
 	register unsigned long _beg __asm ("a1") = (unsigned long)(block_start);				// block start
 	register unsigned long _end __asm ("a2") = (unsigned long)(block_start+block_size);		// block end
@@ -97,7 +107,7 @@ static void cache_block_closing(Bit8u* block_start,Bitu block_size) {
 	__asm __volatile ("swi 0x0"
 		: // no outputs
 		: "r" (_beg), "r" (_end), "r" (_flg), "r" (_par)
-		);
+		);		
 #else
 // GP2X BEGIN
 	//flush cache - old abi

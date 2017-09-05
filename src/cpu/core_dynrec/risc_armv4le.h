@@ -23,8 +23,10 @@
 #include "risc_armv4le-common.h"
 
 // choose your destiny:
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV7LE 
 	#include "risc_armv4le-o3.h"
+#elif C_TARGETCPU == ARMV8LE	
+	#include "risc_armv8a.h"
 #else
 	#if defined(__THUMB_INTERWORK__)
 		#include "risc_armv4le-thumb-iw.h"

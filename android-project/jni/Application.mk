@@ -5,6 +5,8 @@
 APP_STL := stlport_shared
 APP_ABI := armeabi-v7a
 ANDROID_ABI := "armeabi-v7a with NEON"
+#ANDROID_ABI := arm64-v8a
+#TARGET_ARCH_ABI := arm64-v8a
 ANDROID_ARM_NEON := true
 LOCAL_ARM_NEON := true
 ANDROID_ARM_VFP := hard

@@ -87,7 +87,7 @@
 #define MOV_REG_ROR_REG(dst, src, rreg) (0xe1a00070 + ((dst) << 12) + (src) + ((rreg) << 8) )
 // mvn dst, #(imm ror rimm)		@	0 <= imm <= 255	&	rimm mod 2 = 0
 #define MVN_IMM(dst, imm, rimm) (0xe3e00000 + ((dst) << 12) + (imm) + ((rimm) << 7) )
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 // movw dst, #imm		@	0 <= imm <= 65535
 #define MOVW(dst, imm) (0xe3000000 + ((dst) << 12) + (((imm) & 0xf000) << 4) + ((imm) & 0x0fff) )
 // movt dst, #imm		@	0 <= imm <= 65535
@@ -108,7 +108,7 @@
 // cmp src, #(imm ror rimm)		@	0 <= imm <= 255	&	rimm mod 2 = 0
 #define CMP_IMM(src, imm, rimm) (0xe3500000 + ((src) << 16) + (imm) + ((rimm) << 7) )
 // nop
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 #define NOP (0xe320f000)
 #else
 #define NOP MOV_REG_LSL_IMM(HOST_r0, HOST_r0, 0)
@@ -175,7 +175,7 @@
 #define B_FWD(imm) (0xea000000 + ((imm) >> 2) )
 // bx reg
 #define BX(reg) (0xe12fff10 + (reg) )
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 // blx reg
 #define BLX_REG(reg) (0xe12fff30 + (reg) )
 
@@ -224,7 +224,7 @@ static bool val_is_operand2(Bit32u value, Bit32u *val_shift) {
 	return true;
 }
 
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 // helper function
 static Bits get_imm_gen_len(Bit32u imm) {
 	Bits ret;
@@ -256,7 +256,7 @@ static Bits get_min_imm_gen_len(Bit32u imm) {
 
 // move a 32bit constant value into dest_reg
 static void gen_mov_dword_to_reg_imm(HostReg dest_reg,Bit32u imm) {
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 	Bit32u scale;
 
 	if ( val_is_operand2(imm, &scale) ) {
@@ -324,7 +324,7 @@ static void gen_mov_dword_to_reg_imm(HostReg dest_reg,Bit32u imm) {
 static bool gen_mov_memval_to_reg_helper(HostReg dest_reg, Bit32u data, Bitu size, HostReg addr_reg, Bit32u addr_data) {
 	switch (size) {
 		case 4:
-#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV7LE))
+#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV8LE))
 			if ((data & 3) == 0)
 #endif
 			{
@@ -338,7 +338,7 @@ static bool gen_mov_memval_to_reg_helper(HostReg dest_reg, Bit32u data, Bitu siz
 			}
 			break;
 		case 2:
-#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV7LE))
+#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV8LE))
 			if ((data & 1) == 0)
 #endif
 			{
@@ -367,15 +367,9 @@ static bool gen_mov_memval_to_reg_helper(HostReg dest_reg, Bit32u data, Bitu siz
 
 // helper function
 static bool gen_mov_memval_to_reg(HostReg dest_reg, void *data, Bitu size) {
-#if (C_TARGETCPU == ARMV8LE)
-	if (gen_mov_memval_to_reg_helper(dest_reg, (Bit64u)data, size, FC_REGS_ADDR, (Bit64u)&cpu_regs)) return true;
-	if (gen_mov_memval_to_reg_helper(dest_reg, (Bit64u)data, size, readdata_addr, (Bit64u)&core_dynrec.readdata)) return true;
-	if (gen_mov_memval_to_reg_helper(dest_reg, (Bit64u)data, size, FC_SEGS_ADDR, (Bit64u)&Segs)) return true;
-#else
 	if (gen_mov_memval_to_reg_helper(dest_reg, (Bit32u)data, size, FC_REGS_ADDR, (Bit32u)&cpu_regs)) return true;
 	if (gen_mov_memval_to_reg_helper(dest_reg, (Bit32u)data, size, readdata_addr, (Bit32u)&core_dynrec.readdata)) return true;
 	if (gen_mov_memval_to_reg_helper(dest_reg, (Bit32u)data, size, FC_SEGS_ADDR, (Bit32u)&Segs)) return true;
-#endif	
 	return false;
 }
 
@@ -383,7 +377,7 @@ static bool gen_mov_memval_to_reg(HostReg dest_reg, void *data, Bitu size) {
 static void gen_mov_word_to_reg_helper(HostReg dest_reg,void* data,bool dword,HostReg data_reg) {
 	// alignment....
 	if (dword) {
-#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV7LE))
+#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV8LE))
 		if ((Bit32u)data & 3) {
 			if ( ((Bit32u)data & 3) == 2 ) {
 				cache_addd( LDRH_IMM(dest_reg, data_reg, 0) );      // ldrh dest_reg, [data_reg]
@@ -402,7 +396,7 @@ static void gen_mov_word_to_reg_helper(HostReg dest_reg,void* data,bool dword,Ho
 			cache_addd( LDR_IMM(dest_reg, data_reg, 0) );      // ldr dest_reg, [data_reg]
 		}
 	} else {
-#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV7LE))
+#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV8LE))
 		if ((Bit32u)data & 1) {
 			cache_addd( LDRB_IMM(dest_reg, data_reg, 0) );      // ldrb dest_reg, [data_reg]
 			cache_addd( LDRB_IMM(temp2, data_reg, 1) );      // ldrb temp2, [data_reg, #1]
@@ -434,7 +428,7 @@ static void INLINE gen_mov_word_to_reg_imm(HostReg dest_reg,Bit16u imm) {
 static bool gen_mov_memval_from_reg_helper(HostReg src_reg, Bit32u data, Bitu size, HostReg addr_reg, Bit32u addr_data) {
 	switch (size) {
 		case 4:
-#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV7LE))
+#if !(defined(C_UNALIGNED_MEMORY)|| (C_TARGETCPU == ARMV8LE))
 			if ((data & 3) == 0)
 #endif
 			{
@@ -448,7 +442,7 @@ static bool gen_mov_memval_from_reg_helper(HostReg src_reg, Bit32u data, Bitu si
 			}
 			break;
 		case 2:
-#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV7LE))
+#if !(defined(C_UNALIGNED_MEMORY)|| (C_TARGETCPU == ARMV8LE))
 			if ((data & 1) == 0)
 #endif
 			{
@@ -487,7 +481,7 @@ static bool gen_mov_memval_from_reg(HostReg src_reg, void *dest, Bitu size) {
 static void gen_mov_word_from_reg_helper(HostReg src_reg,void* dest,bool dword, HostReg data_reg) {
 	// alignment....
 	if (dword) {
-#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV7LE))
+#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV8LE))
 		if ((Bit32u)dest & 3) {
 			if ( ((Bit32u)dest & 3) == 2 ) {
 				cache_addd( STRH_IMM(src_reg, data_reg, 0) );      // strh src_reg, [data_reg]
@@ -506,7 +500,7 @@ static void gen_mov_word_from_reg_helper(HostReg src_reg,void* dest,bool dword, 
 			cache_addd( STR_IMM(src_reg, data_reg, 0) );      // str src_reg, [data_reg]
 		}
 	} else {
-#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV7LE))
+#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV8LE))
 		if ((Bit32u)dest & 1) {
 			cache_addd( STRB_IMM(src_reg, data_reg, 0) );      // strb src_reg, [data_reg]
 			cache_addd( MOV_REG_LSR_IMM(temp2, src_reg, 8) );      // mov temp2, src_reg, lsr #8
@@ -576,14 +570,14 @@ static void gen_mov_byte_from_reg_low(HostReg src_reg,void* dest) {
 // the register is zero-extended (sign==false) or sign-extended (sign==true)
 static void gen_extend_byte(bool sign,HostReg reg) {
 	if (sign) {
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 		cache_addd( SXTB(reg, reg, 0) );      // sxtb reg, reg
 #else
 		cache_addd( MOV_REG_LSL_IMM(reg, reg, 24) );      // mov reg, reg, lsl #24
 		cache_addd( MOV_REG_ASR_IMM(reg, reg, 24) );      // mov reg, reg, asr #24
 #endif
 	} else {
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 		cache_addd( UXTB(reg, reg, 0) );      // uxtb reg, reg
 #else
 		cache_addd( AND_IMM(reg, reg, 0xff, 0) );      // and reg, reg, #0xff
@@ -595,14 +589,14 @@ static void gen_extend_byte(bool sign,HostReg reg) {
 // the register is zero-extended (sign==false) or sign-extended (sign==true)
 static void gen_extend_word(bool sign,HostReg reg) {
 	if (sign) {
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 		cache_addd( SXTH(reg, reg, 0) );      // sxth reg, reg
 #else
 		cache_addd( MOV_REG_LSL_IMM(reg, reg, 16) );      // mov reg, reg, lsl #16
 		cache_addd( MOV_REG_ASR_IMM(reg, reg, 16) );      // mov reg, reg, asr #16
 #endif
 	} else {
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 		cache_addd( UXTH(reg, reg, 0) );      // uxth reg, reg
 #else
 		cache_addd( MOV_REG_LSL_IMM(reg, reg, 16) );      // mov reg, reg, lsl #16
@@ -629,18 +623,18 @@ static void gen_add_imm(HostReg reg,Bit32u imm) {
 		cache_addd( ADD_IMM(reg, reg, imm >> scale, ROTATE_SCALE(scale)) );      // add reg, reg, #imm
 	} else if ( val_is_operand2(imm2, &scale) ) {
 		cache_addd( SUB_IMM(reg, reg, imm2 >> scale, ROTATE_SCALE(scale)) );      // sub reg, reg, #(-imm)
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 	} else if (imm2 < 0x10000) {
 		cache_addd( MOVW(temp2, imm2) );      // movw temp2, #(-imm)
 		cache_addd( SUB_REG_LSL_IMM(reg, reg, temp2, 0) );      // sub reg, reg, temp2
 #endif
 			} else {
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 		if (get_min_imm_gen_len(imm) <= get_min_imm_gen_len(imm2)) {
 #endif
 			gen_mov_dword_to_reg_imm(temp2, imm);
 			cache_addd( ADD_REG_LSL_IMM(reg, reg, temp2, 0) );      // add reg, reg, temp2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 				} else {
 			gen_mov_dword_to_reg_imm(temp2, imm2);
 			cache_addd( SUB_REG_LSL_IMM(reg, reg, temp2, 0) );      // sub reg, reg, temp2
@@ -661,7 +655,7 @@ static void gen_and_imm(HostReg reg,Bit32u imm) {
 		cache_addd( AND_IMM(reg, reg, imm >> scale, ROTATE_SCALE(scale)) );      // and reg, reg, #imm
 	} else if ( val_is_operand2(imm2, &scale) ) {
 		cache_addd( BIC_IMM(reg, reg, imm2 >> scale, ROTATE_SCALE(scale)) );      // bic reg, reg, #(~imm)
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 	} else if (imm2 < 0x10000) {
 		cache_addd( MOVW(temp2, imm2) );      // movw temp2, #(~imm)
 		cache_addd( BIC_REG_LSL_IMM(reg, reg, temp2, 0) );      // bic reg, reg, temp2
@@ -722,18 +716,18 @@ static void gen_sub_direct_word(void* dest,Bit32u imm,bool dword) {
 		cache_addd( SUB_IMM(temp3, temp3, imm >> scale, ROTATE_SCALE(scale)) );      // sub temp3, temp3, #imm
 	} else if ( val_is_operand2(imm2, &scale) ) {
 		cache_addd( ADD_IMM(temp3, temp3, imm2 >> scale, ROTATE_SCALE(scale)) );      // add temp3, temp3, #(-imm)
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 	} else if (imm2 < 0x10000) {
 		cache_addd( MOVW(temp2, imm2) );      // movw temp2, #(-imm)
 		cache_addd( ADD_REG_LSL_IMM(temp3, temp3, temp2, 0) );      // add temp3, temp3, temp2
 #endif
 	} else {
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 		if (get_min_imm_gen_len(imm) <= get_min_imm_gen_len(imm2)) {
 #endif
 		gen_mov_dword_to_reg_imm(temp2, imm);
 			cache_addd( SUB_REG_LSL_IMM(temp3, temp3, temp2, 0) );      // sub temp3, temp3, temp2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 	} else {
 			gen_mov_dword_to_reg_imm(temp2, imm2);
 			cache_addd( ADD_REG_LSL_IMM(temp3, temp3, temp2, 0) );      // add temp3, temp3, temp2
@@ -771,7 +765,7 @@ static INLINE void gen_lea(HostReg dest_reg,Bitu scale,Bits imm) {
 
 // generate a call to a parameterless function
 static void INLINE gen_call_function_raw(void * func) {
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 	cache_addd( MOVW(temp1, ((Bit32u)func) & 0xffff) );      // movw temp1, #(func & 0xffff)
 	cache_addd( MOVT(temp1, ((Bit32u)func) >> 16) );      // movt temp1, #(func >> 16)
 	cache_addd( BLX_REG(temp1) );      // blx temp1
@@ -824,7 +818,7 @@ static void gen_jmp_ptr(void * ptr,Bits imm=0) {
 
 	gen_mov_word_to_reg(temp3, ptr, 1);
 
-#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV7LE))
+#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV8LE))
 // (*ptr) should be word aligned
 	if ((imm & 0x03) == 0) {
 #endif
@@ -834,7 +828,7 @@ static void gen_jmp_ptr(void * ptr,Bits imm=0) {
 			gen_mov_dword_to_reg_imm(temp2, imm);
 			cache_addd( LDR_REG_LSL_IMM(temp1, temp3, temp2, 0) );      // ldr temp1, [temp3, temp2]
 			}
-#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV7LE))
+#if !(defined(C_UNALIGNED_MEMORY) || (C_TARGETCPU == ARMV8LE))
 			} else {
 		gen_add_imm(temp3, imm);
 
@@ -911,7 +905,7 @@ static void INLINE gen_fill_branch_long(Bit32u data) {
 }
 
 static void gen_run_code(void) {
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 	cache_addd(0xe92d4df0);			// stmfd sp!, {v1-v5,v7,v8,lr}
 
 	cache_addd( MOVW(FC_SEGS_ADDR, ((Bit32u)&Segs) & 0xffff) );      // movw FC_SEGS_ADDR, #(&Segs & 0xffff)
@@ -978,7 +972,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=ADD_REG_LSL_IMM(FC_RETOP, HOST_a1, HOST_a2, 0);	// add FC_RETOP, a1, a2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
@@ -988,7 +982,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=ORR_REG_LSL_IMM(FC_RETOP, HOST_a1, HOST_a2, 0);	// orr FC_RETOP, a1, a2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
@@ -998,7 +992,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=AND_REG_LSL_IMM(FC_RETOP, HOST_a1, HOST_a2, 0);	// and FC_RETOP, a1, a2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
@@ -1008,7 +1002,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=SUB_REG_LSL_IMM(FC_RETOP, HOST_a1, HOST_a2, 0);	// sub FC_RETOP, a1, a2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
@@ -1018,7 +1012,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=EOR_REG_LSL_IMM(FC_RETOP, HOST_a1, HOST_a2, 0);	// eor FC_RETOP, a1, a2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
@@ -1031,7 +1025,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=NOP;				// nop
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
@@ -1041,7 +1035,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=ADD_IMM(FC_RETOP, HOST_a1, 1, 0);	// add FC_RETOP, a1, #1
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
@@ -1051,7 +1045,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=SUB_IMM(FC_RETOP, HOST_a1, 1, 0);	// sub FC_RETOP, a1, #1
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
@@ -1061,13 +1055,13 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=MOV_REG_LSL_REG(FC_RETOP, HOST_a1, HOST_a2);	// mov FC_RETOP, a1, lsl a2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
 		case t_SHRb:
 			*(Bit32u*)pos=NOP;					// nop
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 			*(Bit32u*)(pos+4)=BFC(HOST_a1, 8, 24);	// bfc a1, 8, 24
 			*(Bit32u*)(pos+8)=MOV_REG_LSR_REG(FC_RETOP, HOST_a1, HOST_a2);	// mov FC_RETOP, a1, lsr a2
 #else
@@ -1078,7 +1072,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			break;
 		case t_SHRw:
 			*(Bit32u*)pos=NOP;					// nop
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 			*(Bit32u*)(pos+4)=BFC(HOST_a1, 16, 16);	// bfc a1, 16, 16
 			*(Bit32u*)(pos+8)=MOV_REG_LSR_REG(FC_RETOP, HOST_a1, HOST_a2);	// mov FC_RETOP, a1, lsr a2
 #else
@@ -1091,13 +1085,13 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=MOV_REG_LSR_REG(FC_RETOP, HOST_a1, HOST_a2);	// mov FC_RETOP, a1, lsr a2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
 		case t_SARb:
 			*(Bit32u*)pos=NOP;					// nop
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 			*(Bit32u*)(pos+4)=SXTB(FC_RETOP, HOST_a1, 0);					// sxtb FC_RETOP, a1
 			*(Bit32u*)(pos+8)=MOV_REG_ASR_REG(FC_RETOP, FC_RETOP, HOST_a2);	// mov FC_RETOP, FC_RETOP, asr a2
 #else
@@ -1108,7 +1102,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			break;
 		case t_SARw:
 			*(Bit32u*)pos=NOP;					// nop
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 			*(Bit32u*)(pos+4)=SXTH(FC_RETOP, HOST_a1, 0);					// sxth FC_RETOP, a1
 			*(Bit32u*)(pos+8)=MOV_REG_ASR_REG(FC_RETOP, FC_RETOP, HOST_a2);	// mov FC_RETOP, FC_RETOP, asr a2
 #else
@@ -1121,12 +1115,12 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=MOV_REG_ASR_REG(FC_RETOP, HOST_a1, HOST_a2);	// mov FC_RETOP, a1, asr a2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
 		case t_RORb:
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 			*(Bit32u*)pos=BFI(HOST_a1, HOST_a1, 8, 8);						// bfi a1, a1, 8, 8
 			*(Bit32u*)(pos+4)=BFI(HOST_a1, HOST_a1, 16, 16);				// bfi a1, a1, 16, 16
 			*(Bit32u*)(pos+8)=MOV_REG_ROR_REG(FC_RETOP, HOST_a1, HOST_a2);	// mov FC_RETOP, a1, ror a2
@@ -1139,7 +1133,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			break;
 		case t_RORw:
 			*(Bit32u*)pos=NOP;					// nop
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 			*(Bit32u*)(pos+4)=BFI(HOST_a1, HOST_a1, 16, 16);				// bfi a1, a1, 16, 16
 			*(Bit32u*)(pos+8)=MOV_REG_ROR_REG(FC_RETOP, HOST_a1, HOST_a2);	// mov FC_RETOP, a1, ror a2
 #else
@@ -1152,12 +1146,12 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=MOV_REG_ROR_REG(FC_RETOP, HOST_a1, HOST_a2);	// mov FC_RETOP, a1, ror a2
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
 		case t_ROLw:
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 			*(Bit32u*)pos=BFI(HOST_a1, HOST_a1, 16, 16);					// bfi a1, a1, 16, 16
 			*(Bit32u*)(pos+4)=RSB_IMM(HOST_a2, HOST_a2, 32, 0);				// rsb a2, a2, #32
 			*(Bit32u*)(pos+8)=MOV_REG_ROR_REG(FC_RETOP, HOST_a1, HOST_a2);	// mov FC_RETOP, a1, ror a2
@@ -1170,7 +1164,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			break;
 		case t_ROLd:
 			*(Bit32u*)pos=NOP;					// nop
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 			*(Bit32u*)(pos+4)=RSB_IMM(HOST_a2, HOST_a2, 32, 0);				// rsb a2, a2, #32
 			*(Bit32u*)(pos+8)=MOV_REG_ROR_REG(FC_RETOP, HOST_a1, HOST_a2);	// mov FC_RETOP, a1, ror a2
 #else
@@ -1185,12 +1179,12 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 			*(Bit32u*)pos=NOP;					// nop
 			*(Bit32u*)(pos+4)=NOP;				// nop
 			*(Bit32u*)(pos+8)=RSB_IMM(FC_RETOP, HOST_a1, 0, 0);	// rsb FC_RETOP, a1, #0
-#if C_TARGETCPU != ARMV7LE
+#if C_TARGETCPU != ARMV8LE
 			*(Bit32u*)(pos+12)=NOP;				// nop
 #endif
 			break;
 		default:
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 			*(Bit32u*)pos=MOVW(temp1, ((Bit32u)fct_ptr) & 0xffff);      // movw temp1, #(fct_ptr & 0xffff)
 			*(Bit32u*)(pos+4)=MOVT(temp1, ((Bit32u)fct_ptr) >> 16);      // movt temp1, #(fct_ptr >> 16)
 #else
@@ -1200,7 +1194,7 @@ static void gen_fill_function_ptr(Bit8u * pos,void* fct_ptr,Bitu flags_type) {
 
 	}
 #else
-#if C_TARGETCPU == ARMV7LE
+#if C_TARGETCPU == ARMV8LE
 	*(Bit32u*)pos=MOVW(temp1, ((Bit32u)fct_ptr) & 0xffff);      // movw temp1, #(fct_ptr & 0xffff)
 	*(Bit32u*)(pos+4)=MOVT(temp1, ((Bit32u)fct_ptr) >> 16);      // movt temp1, #(fct_ptr >> 16)
 #else
