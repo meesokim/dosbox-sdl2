@@ -457,7 +457,7 @@ void DOSBOX_Init(void) {
 		"                  handle.");
 
 	const char* cyclest[] = { "auto","fixed","max","%u",0 };
-#ifdef ANDROID
+#ifdef __ANDROID__
 	Pstring = Pmulti_remain->GetSection()->Add_string("type",Property::Changeable::Always,"max");
 	Pmulti_remain->SetValue("max");
 #else

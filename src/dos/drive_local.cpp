@@ -290,7 +290,7 @@ again:
 
 	find_size=(Bit32u) stat_block.st_size;
 	struct tm *time;
-#ifdef ANDROID // Apply a workaround against compilation error
+#ifdef __ANDROID__ // Apply a workaround against compilation error
 	time_t rawtime;
 	time=localtime(&rawtime);
 	stat_block.st_mtime = rawtime;
@@ -415,7 +415,7 @@ bool localDrive::FileStat(const char* name, FileStat_Block * const stat_block) {
 	if(stat(newname,&temp_stat)!=0) return false;
 	/* Convert the stat to a FileStat */
 	struct tm *time;
-#ifdef ANDROID // Apply a workaround against compilation error
+#ifdef __ANDROID__ // Apply a workaround against compilation error
 	time_t rawtime;
 	time=localtime(&rawtime);
 	temp_stat.st_mtime = rawtime;
@@ -561,7 +561,7 @@ bool localFile::UpdateDateTimeFromHost(void) {
 	struct stat temp_stat;
 	fstat(fileno(fhandle),&temp_stat);
 	struct tm * ltime;
-#ifdef ANDROID // Apply a workaround against compilation error
+#ifdef __ANDROID__ // Apply a workaround against compilation error
 	time_t rawtime;
 	ltime=localtime(&rawtime);
 	temp_stat.st_mtime = rawtime;

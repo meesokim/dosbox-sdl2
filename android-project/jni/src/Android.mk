@@ -45,6 +45,7 @@ LOCAL_CPP_FEATURES += exceptions
 # without zlib. So, let's give up for now.
 LOCAL_SRC_FILES := \
 	$(LOCAL_SRC_PATH)/dosbox.cpp \
+	./ftime.c \
 	$(wildcard $(LOCAL_SRC_PATH)/cpu/*.c) \
 	$(wildcard $(LOCAL_SRC_PATH)/cpu/*.cpp) \
 	$(wildcard $(LOCAL_SRC_PATH)/core_dynrec/*.c) \
@@ -59,6 +60,7 @@ LOCAL_SRC_FILES := \
 	$(wildcard $(LOCAL_SRC_PATH)/debug/*.cpp) \
 	\
 	$(wildcard $(LOCAL_SRC_PATH)/dos/cdrom_image.cpp) \
+	$(wildcard $(LOCAL_SRC_PATH)/dos/cdrom.cpp) \
 	$(wildcard $(LOCAL_SRC_PATH)/dos/d*.cpp) \
 	\
 	$(wildcard $(LOCAL_SRC_PATH)/fpu/*.c) \

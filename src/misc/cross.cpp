@@ -31,7 +31,7 @@
 #include <shlobj.h>
 #endif
 
-#if defined(ANDROID)
+#if defined(__ANDROID__)
 #include "SDL_system.h" // For SDL_AndroidGetExternalStoragePath
 #endif
 
@@ -66,7 +66,7 @@ void Cross::GetPlatformConfigDir(std::string& in) {
 #elif defined(MACOSX)
 	in = "~/Library/Preferences";
 	ResolveHomedir(in);
-#elif defined(ANDROID)
+#elif defined(__ANDROID__)
 	in = SDL_AndroidGetExternalStoragePath();
 	//Assume external storage (possibly internal) is available
 	chdir(in.c_str());
@@ -83,7 +83,7 @@ void Cross::GetPlatformConfigName(std::string& in) {
 #define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
 #elif defined(MACOSX)
 #define DEFAULT_CONFIG_FILE "DOSBox " VERSION " Preferences"
-#elif defined(ANDROID)
+#elif defined(__ANDROID__)
 #define DEFAULT_CONFIG_FILE "dosbox.conf"
 #else /*linux freebsd*/
 #define DEFAULT_CONFIG_FILE "dosbox-" VERSION ".conf"
@@ -100,7 +100,7 @@ void Cross::CreatePlatformConfigDir(std::string& in) {
 	in = "~/Library/Preferences/";
 	ResolveHomedir(in);
 	//Don't create it. Assume it exists
-#elif defined(ANDROID)
+#elif defined(__ANDROID__)
 	in = SDL_AndroidGetExternalStoragePath();
 	//Assume external storage (possibly internal) is available
 	ResolveHomedir(in);

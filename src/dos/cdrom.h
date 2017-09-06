@@ -243,7 +243,7 @@ typedef	std::vector<Track>::iterator	track_it;
 	Bit8u	subUnit;
 };
 
-#if !SDL_VERSION_ATLEAST(2,0,0)
+#if C_PHYSICAL_CDROM_MOUNT || !SDL_VERSION_ATLEAST(2,0,0)
 
 #if defined (WIN32)	/* Win 32 */
 

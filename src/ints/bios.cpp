@@ -504,7 +504,7 @@ static void BIOS_HostTimeSync() {
 #else
 	/* Setup time and date */
 	struct timeb timebuffer;
-//	ftime(&timebuffer);
+	ftime(&timebuffer);
 	
 	struct tm *loctime;
 	loctime = localtime (&timebuffer.time);
