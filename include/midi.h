@@ -29,6 +29,8 @@ public:
 	MidiHandler();
 	virtual bool Open(const char * /*conf*/) { return true; };
 	virtual void Close(void) {};
+	virtual void Pause(void) {};
+	virtual void Resume(void) {};
 	virtual void PlayMsg(Bit8u * /*msg*/) {};
 	virtual void PlaySysex(Bit8u * /*sysex*/,Bitu /*len*/) {};
 	virtual const char * GetName(void) { return "none"; };

@@ -81,9 +81,9 @@ LOCAL_SRC_FILES := \
 	$(wildcard $(LOCAL_SRC_PATH)/shell/*.cpp) \
 	$(SDL_PATH)/src/main/android/SDL_android_main.c 
 	
-LOCAL_SHARED_LIBRARIES := SDL2 SDL2_net
+LOCAL_SHARED_LIBRARIES := SDL2 SDL2_net sonivox 
 LOCAL_BUILD_MODULE := $(PRIVATE_SYSROOT_LINK)/libc.a
 
-LOCAL_LDLIBS := -lc -lGLESv1_CM -llog 
+LOCAL_LDLIBS := -lc -lGLESv1_CM -llog -lOpenSLES
 
 include $(BUILD_SHARED_LIBRARY)

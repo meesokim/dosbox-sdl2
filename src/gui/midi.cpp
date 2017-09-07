@@ -79,6 +79,10 @@ MidiHandler Midi_none;
 
 #include "midi_win32.h"
 
+#elif defined (__ANDROID__)
+
+#include "midi_android.h"
+
 #else
 
 #include "midi_oss.h"
@@ -226,4 +230,14 @@ void MIDI_Destroy(Section* /*sec*/){
 void MIDI_Init(Section * sec) {
 	test = new MIDI(sec);
 	sec->AddDestroyFunction(&MIDI_Destroy,true);
+}
+
+void MIDI_Stop(void) {
+	if (midi.handler)
+		midi.handler->Pause();
+}
+
+void MIDI_Start(void) {
+	if (midi.handler)
+		midi.handler->Resume();
 }

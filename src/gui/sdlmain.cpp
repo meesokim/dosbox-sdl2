@@ -61,6 +61,10 @@
 #include "cross.h"
 #include "control.h"
 
+
+extern void MIDI_Start(void);
+extern void MIDI_Stop(void);
+
 #if SDL_VERSION_ATLEAST(2,0,0)
 #define MAPPERFILE "mapper-sdl2-" VERSION ".map"
 #else
@@ -447,6 +451,8 @@ static void PauseDOSBox(bool pressed) {
 	}
 	/* NOTE: This is one of the few places where we use SDL key codes
 	with SDL 2.0, rather than scan codes. Is that the correct behavior? */
+	if (!paused)
+		MIDI_Start();
 	while (paused) {
 		SDL_WaitEvent(&event);    // since we're not polling, cpu usage drops to 0.
 		switch (event.type) {
@@ -1775,8 +1781,13 @@ static void SetPriority(PRIORITY_LEVELS level) {
 	case PRIORITY_LEVEL_HIGHEST:
 		setpriority (PRIO_PGRP, 0,PRIO_MAX-((3*PRIO_TOTAL)/4) );
 		break;
+#else
+	case PRIORITY_LEVEL_PAUSE:	// if DOSBox is paused, assume idle priority
+//		MIDI_Start();
+		break;
 #endif
 	default:
+//		MIDI_Stop();
 		break;
 	}
 }
@@ -2404,6 +2415,9 @@ void GFX_Events() {
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
 #if SDL_VERSION_ATLEAST(2,0,0)
+		case SDL_APP_WILLENTERBACKGROUND:
+			MIDI_Stop();
+			break;
 		case SDL_WINDOWEVENT:
 			switch (event.window.event) {
 				case SDL_WINDOWEVENT_RESTORED:
@@ -2424,6 +2438,7 @@ void GFX_Events() {
 						GFX_CaptureMouse();
 					SetPriority(sdl.priority.focus);
 					CPU_Disable_SkipAutoAdjust();
+					MIDI_Start();
 					break;
 				case SDL_WINDOWEVENT_FOCUS_LOST:
 					if (sdl.mouse.locked) {
@@ -2454,7 +2469,6 @@ void GFX_Events() {
 					 */
 					bool paused = true;
 					SDL_Event ev;
-
 					GFX_SetTitle(-1,-1,true);
 					KEYBOARD_ClrBuffer();
 //					SDL_Delay(500);
