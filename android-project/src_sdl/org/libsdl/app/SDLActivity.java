@@ -17,6 +17,7 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -53,9 +54,9 @@ public class SDLActivity extends Activity {
 
     // Main components
     protected static SDLActivity mSingleton;
-    protected static SDLSurface mSurface;
+    public static SDLSurface mSurface;
     protected static View mTextEdit;
-    protected static ViewGroup mLayout;
+    public static ViewGroup mLayout;
     protected static SDLJoystickHandler mJoystickHandler;
 	protected static boolean mKeyboard;
 
@@ -178,9 +179,9 @@ public class SDLActivity extends Activity {
             mJoystickHandler = new SDLJoystickHandler();
         }
 
-        mLayout = new RelativeLayout(this);
+        mLayout = new FrameLayout(this);
         mLayout.addView(mSurface);
-
+		
         setContentView(mLayout);
         
         // Get filename from "Open with" of another application
@@ -319,7 +320,7 @@ public class SDLActivity extends Activity {
 		
         if ((event.getSource() & InputDevice.SOURCE_KEYBOARD) != 0 || event.getSource() == 0) {
             if (event.getAction() == KeyEvent.ACTION_DOWN) {
-                //Log.v("SDL", "key down: " + keyCode + "(" + event.getSource() + ")");
+                Log.v("SDL", "key down: " + keyCode + "(" + event.getSource() + ")");
                 SDLActivity.onNativeKeyDown(keyCode);
                 return true;
             }
@@ -1102,7 +1103,6 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
     public SDLSurface(Context context) {
         super(context);
         getHolder().addCallback(this);
-
         setFocusable(true);
         setFocusableInTouchMode(true);
         requestFocus();
@@ -1205,6 +1205,7 @@ class SDLSurface extends SurfaceView implements SurfaceHolder.Callback,
             Log.v("SDL", "pixel format unknown " + format);
             break;
         }
+		//holder.setFormat(PixelFormat.TRANSLUCENT);
 
         mWidth = width;
         mHeight = height;
@@ -1505,6 +1506,7 @@ class DummyEdit extends View implements View.OnKeyListener {
         }
 
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            Log.v("SDL", "key down2: " + keyCode + "(" + event.getSource() + ")");			
             SDLActivity.onNativeKeyDown(keyCode);
             return true;
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
@@ -1562,6 +1564,7 @@ class SDLInputConnection extends BaseInputConnection {
             if (event.isPrintingKey() || keyCode == KeyEvent.KEYCODE_SPACE) {
                 commitText(String.valueOf((char) event.getUnicodeChar()), 1);
             }
+			Log.v("SDL", "key down3: " + keyCode + "(" + event.getSource() + ")");
             SDLActivity.onNativeKeyDown(keyCode);
             return true;
         } else if (event.getAction() == KeyEvent.ACTION_UP) {
