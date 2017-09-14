@@ -4,6 +4,7 @@
 # APP_STL := stlport_static 
 APP_STL := stlport_shared
 APP_ABI := armeabi-v7a
+APP_PLATFORM := android-17
 ANDROID_ABI := "armeabi-v7a with NEON"
 #ANDROID_ABI := arm64-v8a
 #TARGET_ARCH_ABI := arm64-v8a
