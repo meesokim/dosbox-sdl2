@@ -1,0 +1,126 @@
+
+                   Äá¬á ·¡•·
+
+ Ðe ‹i¸a ¶E½¢   <-        º‰·   Àá·q  Home
+ Ðe ‹i¸a µ¡Ÿe½¢ ->        º‰·   {    End
+ Ðe ”e´á ¶E½¢   Ctrl <-   ÑÁ¡e· Àá·q  Ctrl-Home
+ Ðe ”e´á µ¡Ÿe½¢ Ctrl ->   ÑÁ¡e· {    Ctrl-End
+ Ðe º‰   ¶á     Up        ¢…¬á· Àá·q  Ctrl-PgUp
+ Ðe º‰   ´aœ   Down      ¢…¬á· {    Ctrl-PgDn
+ Ðe ÑÁ¡e ¶á     PgUp      »¢¸å ¶áÃ¡¡  Ctrl-Q P
+ Ðe ÑÁ¡e ´aœ   PgDn      Ëb¸÷ ÍA·¡»¡  Alt -G
+
+ Ðe ÍA·¡»¡(¹··¡) ·¡•·     shift-PgUp, Down
+
+
+     ¬s·³,¬b¹A                 §iœâ ¡ww
+
+  ¬s·³<->®¸÷      Ins      §iœâ ¯¡¸b  F3
+  Ðe º‰  ¬s·³      Enter    Šµb ¯¡¸b  F4
+                            
+  ¸a¡¡”e¶á »¡¶‹¡  BS       µ¡a –‹¡  Ctrl-X
+  ´| ‹i¸a  »¡¶‹¡  BS       ¥¢¬a       Ctrl-C
+  Ðe ‹i¸a  »¡¶‹¡  Del      ¦›·¡‹¡     Ctrl-V
+  Ðe ”e´á  »¡¶‹¡  Ctrl-T   ‰©œa¦›·¡‹¡ Ctrl-B
+  ´| ”e´á  »¡¶‹¡  CtrlBS   »¡¶‹¡     Ctrl-E  
+  º‰{Œa»¡ »¡¶‹¡  Alt -Y   §iœâ ·ª‹¡  Ctrl-K R
+  Ðe º‰    »¡¶‹¡  Ctrl-Y   §iœâ ³a‹¡  Ctrl-K W
+
+
+                     ‹¡ Èa
+
+  Àx‹¡       Ctrl-Q F         Ça¡ ¯¡¸b  Alt-B
+  ¤aŽ‹¡     Ctrl-Q A         Ça¡   {  Alt-B
+  ¤e¥¢       Ctrl-L          ¯©Ð—         Alt-1~0
+  
+  •¡Îa ¥¡Ñ¡  Shift-Ins       Àñ¸a         Ctrl-A
+  Ðe/µw ¸åÑÅ Shift-Space     ¥¡É·¢…¸a     Alt -A
+  ¯aÇa©     Shift-ÑÁ¬iÎa    ÑÁ¡e¸÷Ÿ¡     Alt -R
+
+  ÍA·¡»¡a’‘ Ctrl-Enter      Ðe¸a<=>Ðe‹i  F9
+  Å¡—a  ·³b Ctrl-F9
+
+
+              Alt         Ctrl      Shift
+
+ F1  •¡¶‘ i  ¸aÌe¤µi    ..        .
+ F2  Ðe/µw   ´å´á¬åÈ‚    ´å´á—w¢  .
+ F3  §iœâ    ”a¯¡¦Ÿa‹¡  ¬w¶wŠ    .
+ F4          »¢¸åÑÁ·©    ..        .
+ F5          ¶E½¢{ -    ´á³a‹¡  .
+ F6          ¶E½¢{ +    —iµa³a‹¡  .
+ F7          µ¡Ÿe{ -    Í¢“i·¡‹¡  .
+ F8          µ¡Ÿe{ +    Í¢º‰·¡‹¡  .
+ F9  Ðe¸a    Ðe¸a—w¢    ..        .
+ F10 º¡A“A  •¡¯a¡      ..        .
+
+
+          Àx‹¡/¤aŽ‹¡ µA¬á ¬åÈ‚¬aÐw
+
+  G   : ¥¡É·· ‰w¶, Àx‹¡a ¤aŽ‹¡ ¡ww·i  Ÿ¡
+        ¡e  Ñe¸ Äá¬á¶áÃ¡¦Èá {Œa»¡ Àx“e•A, ·¡
+        ¬åÈ‚¬aÐw·i º¡e, Àá·q¦Èá {Œa»¡ ‹i¸åÁA
+        µA ”Ð Àx‹¡/¤aŽ‹¡Ÿi Ðs“¡”a.
+
+  B   : µb¤wÐ··a¡ »b ¶õ½¢·a¡ Àx‹¡/¤aŽ‹¡Ÿi ®
+        Ð—Ðaœa“e ¬åÈ‚¬aÐw·³“¡”a.
+
+  W   : Àx“e ¶w‰Á ¸÷ÑÂÐa‰A ˆ{·e ‰w¶µA e Àx‰¡
+        ”e´á­¢µA Í¡Ðq–A´á ·¶·i ˜“e ¢¯¡Ðs“¡”a.
+
+
+  U   : Àx‹¡Ÿi Ði˜ µw´á·¥ ‰w¶,  ”­¡¢…¸aŸi ¢
+        ¯¡Ða‰¡ Àx•¡¢ Ðº““¡”a.
+
+  N   : ¤aŽ‹¡Ÿi Ði ˜µA, ¤aŽ‰ ”e´áŸi Àx·a¡e ¤a
+        Ž‰»¡Ÿi  ¤å ¢‰´á¥¡“e•A ·¡ ¬åÈ‚¬aÐw·i º
+        ¡e  ¤å ¢ˆ»¡ ´g‰¡ ÐeŒá¤åµA ¤aŽ““¡”a.
+
+ ®•¸a : ‹a ÒU® eÇq Àxˆáa ¤aŽ‹¡Ÿi ¯©Ð—Ðs“¡”a.
+
+  A   : ‹i¸a¡¡´·•¡ Àq¹¡Ða‰A Ðs“¡”a.
+  ?   : Àx‹¡µA¬á '?'ˆa •¡¯a· µÁ·©—aÄa—a '?' µÁ
+        ˆ{·e µbÐi·i Ða‰A Ðº““¡”a.
+
+
+              ¤i·qµA ·Ðe ·©´á·³b
+
+
+   A    I   U   E  O      KA  KI  KU  KE  KO
+   LA   LI  LU  LE LO     KYA KYI KYU KYE KYO
+
+   SA  SI  SU  SE  SO     TA  TI  TU  TE TO
+   SYA SYI SYU SYE SYO            LTU
+   SHA SHU     SHE SHO
+
+   CHA     CHU CHE CHO    TYA TYI TYU TYE TYO
+   CYA CYI CYU CYE CYO    THA THI THU THE THO
+
+
+
+   NA  NI  NU  NE  NO     HA  HI  HU  HE  HO
+   NYA NYI NYU NYE NYO    HYA HYI HYU HYE HYO
+
+   FA  FI  FU  FE  FO     MA  MI  MU  ME  MO
+   FYA FYI FYU FYE FYO    MYA MYI MYU MYE MYO
+
+   YA  YI  YU  YE  YO     RA  RI  RU  RE  RO
+   LYA LYI LYU LYE LYO    RYA RYI RYU RYE RYO
+
+   WA  WI  WU  WE  WO     GA  GI  GU  GE  GO
+   N,  NN                 GYA GYI GYU GYE GYO
+
+
+
+   DA  DI  DU  DE  DO     BA  BI  BU  BE  BO
+   DYA DYI DYU DYE DYO    BYA BYI BYU BYE BYO
+   DHA DHI DHU DHE DHO
+
+   JA  JI   JU  JE  JO    ZA  ZI  ZU  ZE  ZO
+   JYA JYI JYU JYE JYO    ZYA ZYI ZYU ZYE ZYO
+
+   PA  PI  PU  PE  PO     VA  VI  VU  VE  VO
+   PYA PYI PYU PYE PYO    WWI WWE WWU
+
+   KK  TT  PP  SS  ZZ     JJ  DD  BB  FF  HH
+

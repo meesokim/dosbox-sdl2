@@ -58,7 +58,7 @@ public class DOSBoxActivity extends SDLActivity {
         }
 */
         super.onCreate(savedInstanceState); // Initialize the rest (e.g. SDL)
-		copyAssetAll("doomiido");
+		copyAssetAll("game");
 		copyAssetAll("dosbox.conf");	
     }
 
